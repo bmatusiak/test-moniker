@@ -1,0 +1,19 @@
+{
+  "name": "test-moniker",
+  "version": "1.0.0",
+  "description": "testing and ui interface for react-native e2e for native modules",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "bin": {
+    "test-moniker": "./moniker-cli.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}
