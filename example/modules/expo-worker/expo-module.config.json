@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["ExpoWorkerModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.worker.ExpoWorkerModule"]
+  }
+}
