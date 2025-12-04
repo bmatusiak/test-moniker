@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const cli = require('./cli_lib.js');
-const { longRun } = require('./scripts/util.js');
+const { longRun , tryRun } = require('./scripts/util.js');
 cli.description = 'Moniker CLI - A tool for running moniker';
 
 
@@ -39,18 +39,27 @@ cli('--start-dev-server','-s','start-dev-server')
     .info('Start the metro development server')
     .do(() => {
         let metro, logcat;
-        
+        tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
         metro = startMeroServer(() => {
             buildAndInstall(false, false, () => {
                 logcat = adbLogCat(() => {
+                    metro.stop();
+                },false,()=> {  
+                    //build failed
                     metro.stop();
                 });
             });
         }, () => {
             //save logs
+            if(Log.enabled)
+                console.log('Logs saved to ' + Log.path);
             process.exit(0);//exit when metro stops
         }, () => {
             logcat.stop();
+        }, (error) => {
+            console.log('Metro server error:', error);
+            logcat.stop();
+            metro.stop();
         });
 
 
@@ -68,7 +77,7 @@ if (typeof require !== 'undefined' && require.main === module) {
 // export the cli function for requiring
 module.exports = cli;
 
-function startMeroServer(ready, close, done) {
+function startMeroServer(ready, close, done, error) {
     const devServer = longRun('npx',['expo','start', '--dev-client'],{ cwd: workspace, stdio: 'pipe' });
     devServer.stdout.on('data', (data) => {
         if(data.toString().includes('Waiting on http')) {
@@ -76,6 +85,12 @@ function startMeroServer(ready, close, done) {
         }
         if(data.toString().includes('TEST COMPLETE')) {
             if(done) done();
+        }
+        if(data.toString().includes('TEST COMPLETE')) {
+            if(done) done();
+        }
+        if(data.toString().includes('ERROR  SyntaxError')) {
+            if(error) error(data.toString());
         }
     });
     
@@ -99,7 +114,7 @@ function startMeroServer(ready, close, done) {
 }
 
 
-function buildAndInstall(ready, close, intalled, open) {
+function buildAndInstall(ready, close, intalled, open, failed) {
     const buildInstall = longRun('npx',['expo','run:android', '--no-bundler'],{ cwd: workspace, stdio: 'pipe' });
     let installed = false;
     let opening = false;
@@ -112,6 +127,10 @@ function buildAndInstall(ready, close, intalled, open) {
             opening = true;
             if(open) open();
         }
+        if(data.toString().includes('BUILD FAILED')) {
+            console.log('Build failed');
+            if(failed) failed();
+        }
     });
     
     // if (process.stdin.isTTY) process.stdin.setRawMode?.(true);
@@ -121,7 +140,9 @@ function buildAndInstall(ready, close, intalled, open) {
     // if (buildInstall.stdout) buildInstall.stdout.pipe(process.stdout);
     // if (buildInstall.stderr) buildInstall.stderr.pipe(process.stderr);
 
-    buildInstall.stdout.on('data', (data) => {
+    buildInstall.stdout.on('data', logger);
+    buildInstall.stderr.on('data', logger);
+    function logger(data){
         const chunk = data.toString();
         buildInstall._lineBuf = (buildInstall._lineBuf || '') + chunk;
         const lines = buildInstall._lineBuf.split(/\r?\n/);
@@ -132,7 +153,7 @@ function buildAndInstall(ready, close, intalled, open) {
                 process.stdout.write(line + '\n');
             Log.append(line);
         }
-    });
+    }
 
     buildInstall.on('close', (code) => {
         // console.log(`Builder exited with code ${code}`);
@@ -194,8 +215,7 @@ function adbLogCat(done) {
             logcat._lineBuf = lines.pop();
             for (let i = 0; i < lines.length; i++) {
                 const line = '[ADB] ' + lines[i];
-                if(!Log.silent)
-                    process.stdout.write(line + '\n');
+                // if(!Log.silent)  process.stdout.write(line + '\n');
                 Log.append(line);
             }
         }
