@@ -157,31 +157,31 @@ cli('--start-dev-server','-s')
     .do(() => {
         let metro, _builder, logcat;
         tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
-        metro = startMeroServer(() => {
-            builder = buildAndInstall(//ready, close, intalled, open, failed
-                false, // ready
-                false,// close
-                () => {// installed
-                    logcat = adbLogCat(() => {
+        metro = startMeroServer(//ready, close, done, error
+            () => {//ready
+                _builder = buildAndInstall(//ready, close, intalled, open, failed
+                    false, // ready
+                    false,// close
+                    () => {// installed
+                        logcat = adbLogCat(//done
+                            () => {//done
+                                metro.stop();
+                            });
+                    },
+                    false,// opening
+                    ()=> {// failed
                         metro.stop();
                     });
-                },
-                false,// opening
-                ()=> {// failed
-                    metro.stop();
-                });
-        }, () => {
-            //save logs
-            if(Log.enabled)
-                console.log('Logs saved to ' + Log.path);
-            process.exit(0);//exit when metro stops
-        }, () => {
-            logcat.stop();
-        }, (error) => {
-            console.log('Metro server error:', error);
-            logcat.stop();
-            metro.stop();
-        });
+            }, () => { //close
+                if(Log.enabled) console.log('Logs saved to ' + Log.path);
+                process.exit(0);//exit when metro stops
+            }, () => {// done
+                logcat.stop();
+            }, (error) => {// error
+                console.log('Metro server error:', error);
+                logcat.stop();
+                metro.stop();
+            });
 
 
     });
@@ -256,9 +256,10 @@ function startMeroServer(ready, close, done, error) {
     metro.setup('npx', ['expo','start','--dev-client'], { cwd: workspace, stdio: 'pipe' });
 
     let metroBuf = '';
-    metro.on('stdout', (chunk) => {
+
+    function logger(chunk){
         try {
-            const data = String(chunk);
+            const data = chunk.toString();
             if (data.includes('Waiting on http')) {
                 if (ready) ready();
             }
@@ -277,9 +278,12 @@ function startMeroServer(ready, close, done, error) {
                 Log.append(line);
             }
         } catch (_) {}
-    });
+    }
 
-    metro.on('exit', (code) => {
+    metro.on('stdout', (chunk) =>  logger(chunk));
+
+    metro.on('close', (code) => {
+        console.log(`Metro server exited with code ${code}`);
         if (close) close(code);
     });
 
@@ -328,7 +332,8 @@ function buildAndInstall(ready, close, intalled, open, failed) {
     builder.on('stderr', (data) => { try { logger(data); } catch (_) { console.log(_); } });
 
 
-    builder.on('exit', (code) => {
+    builder.on('close', (code) => {
+        console.log(`Builder exited with code ${code}`);
         if (close) close(code);
         if (ready) ready(installed && opening);
     });
@@ -360,7 +365,8 @@ function adbLogCat(done) {
         builderBuf = lines.pop();
         for (let i = 0; i < lines.length; i++) {
             const line = '[ADB] ' + lines[i];
-            if (line.includes('ReactNativeJS') || line.includes('ReactNative') || line.includes('RCTLog') || line.includes('Hermes')) process.stdout.write(line + '\n');
+            // if (line.includes('ReactNativeJS') || line.includes('ReactNative') || line.includes('RCTLog') || line.includes('Hermes')) 
+            process.stdout.write(line + '\n');
             Log.append(line);
         }
     }
@@ -404,7 +410,7 @@ function adbLogCat(done) {
     });
 
     logcat.on('close', (code) => {
-        // console.log(`adb logcat exited with code ${code}`);
+        console.log(`adb logcat exited with code ${code}`);
         if(done) done(code);
     });
 

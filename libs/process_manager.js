@@ -108,7 +108,7 @@ function process_manager(processName) {
             return;
         }
         $child.on('exit', (code, signal) => {
-            proc.emit('exit', code, signal);
+            proc.emit('close', code, signal);
         });
         $child.on('error', (err) => {
             proc.emit('error', err);
