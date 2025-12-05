@@ -14,14 +14,17 @@ function plugin(imports, register) {
     if (events.EventEmitter)
         events.EventEmitter.EventEmitter = events.EventEmitter;
 
+    const nodejs = {
+        fs,
+        path,
+        child_process,
+        events: events.EventEmitter || events,
+        os
+    };
+    nodejs.EventEmitter = nodejs.events;
+
     register(null, {
-        nodejs: {
-            fs,
-            path,
-            child_process,
-            events: events.EventEmitter || events,
-            os
-        }
+        nodejs
     });
 }
 

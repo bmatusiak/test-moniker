@@ -5,11 +5,38 @@ plugin.provides = ['commands'];
 
 function plugin(imports, register) {
     var { cli, workspace, Log, device_manager, process_manager, crash, nodejs } = imports;
+    const { spawnSync } = nodejs.child_process;
 
+    function run(cmd, args = [], opts = {}) {
+        const input = opts.input || null;
+        const env = Object.assign({}, process.env, opts.env || {});
+        const cwd = opts.cwd || process.cwd();
+        const stdio = input ? ['pipe', 'inherit', 'inherit'] : 'inherit';
+        // console.log(`\n$ ${[cmd, ...args].join(" ")}`);
+        const res = spawnSync(cmd, args, { env, stdio, input, cwd });
+        if (res.error) throw res.error;
+        if (res.status !== 0) {
+            const err = new Error(`Command failed: ${cmd} ${args.join(' ')}`);
+            err.status = res.status;
+            throw err;
+        }
+    }
+
+    function tryRun(cmd, args = [], opts = {}) {
+        try {
+            run(cmd, args, opts);
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+
+    let _PROCESS_EXIT_CODE = 0;
 
     cli('--start-dev-server', '-s')
         .info('Start the metro development server')
         .do(() => {
+            const { out, err } = Log;
             let metro, _builder, logcat, crashDetected = false;
             tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
             metro = startMeroServer(//ready, close, done, error
@@ -48,7 +75,7 @@ function plugin(imports, register) {
                                                     try {
                                                         const fs = require('fs');
                                                         const path = require('path');
-                                                        const appJsonPath = path.join(workspace, 'app.json');
+                                                        const appJsonPath = path.join(workspace.path, 'app.json');
                                                         if (fs.existsSync(appJsonPath)) {
                                                             const raw = fs.readFileSync(appJsonPath, 'utf8');
                                                             try {
@@ -62,7 +89,7 @@ function plugin(imports, register) {
                                                         try {
                                                             const fs = require('fs');
                                                             const path = require('path');
-                                                            const manifest = path.join(workspace, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+                                                            const manifest = path.join(workspace.path, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
                                                             if (fs.existsSync(manifest)) {
                                                                 const raw = fs.readFileSync(manifest, 'utf8');
                                                                 const m = raw.match(/package=\"([^\"]+)\"/);
@@ -81,14 +108,14 @@ function plugin(imports, register) {
                                                 // const ts = Date.now();
                                                 // const fs = require('fs');
                                                 const path = require('path');
-                                                const logDir = (Log && Log.path) ? path.join(workspace, path.dirname(Log.path)) : path.join(workspace, 'logs');
+                                                const logDir = (Log && Log.path) ? path.join(workspace.path, path.dirname(Log.path)) : path.join(workspace.path, 'logs');
                                                 // try { if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true }); } catch (_) {}
                                                 // const outPath = path.join(logDir, 'bugreport-' + ts );
                                                 err('[CRASH HANDLER] Saving bugreport to folder ' + logDir);
                                                 device_manager.captureBugreport(logDir, serial, (crasRes) => {
                                                     let ol = '[CRASH HANDLER] Captured bugreport: ' + (crasRes && crasRes.output ? crasRes.output : outPath);
                                                     try { err(ol); } catch (_) { console.log(ol); }
-                                                    try { if (Log && Log.append) Log.append(ol); } catch (_) { }
+                                                    try { if (out) out(ol); } catch (_) { }
                                                     try { logcat.stop(); } catch (_) { }
                                                 });
                                             } catch (_) { }
@@ -119,8 +146,9 @@ function plugin(imports, register) {
 
 
     function startMeroServer(ready, close, done, error) {
+        const { out, err } = Log;
         const metro = process_manager('metro');
-        metro.setup('npx', ['expo', 'start', '--dev-client'], { cwd: workspace, stdio: 'pipe' });
+        metro.setup('npx', ['expo', 'start', '--dev-client'], { cwd: workspace.path, stdio: 'pipe' });
 
         let metroBuf = '';
 
@@ -142,7 +170,7 @@ function plugin(imports, register) {
                 for (let i = 0; i < lines.length; i++) {
                     const line = '[METRO] ' + lines[i];
                     if (!Log.silent) out(line);
-                    Log.append(line);
+                    out(line);
                 }
             } catch (_) { }
         }
@@ -159,8 +187,9 @@ function plugin(imports, register) {
     }
 
     function buildAndInstall(ready, close, intalled, open, failed) {
+        const { out, err } = Log;
         const builder = process_manager('builder');
-        builder.setup('npx', ['expo', 'run:android', '--no-bundler'], { cwd: workspace, stdio: 'pipe' });
+        builder.setup('npx', ['expo', 'run:android', '--no-bundler'], { cwd: workspace.path, stdio: 'pipe' });
         let installed = false;
         let opening = false;
 
@@ -173,7 +202,7 @@ function plugin(imports, register) {
             for (let i = 0; i < lines.length; i++) {
                 const line = '[BUILD] ' + lines[i];
                 if (!Log.silent) out(line);
-                Log.append(line);
+                out(line);
             }
         }
 
@@ -209,6 +238,7 @@ function plugin(imports, register) {
     }
 
     function adbLogCat(done, crashDetect) {
+        const { out, err } = Log;
         // New, simpler adb log collector per-device.
         const fs = require('fs');
         const path = require('path');
@@ -216,7 +246,7 @@ function plugin(imports, register) {
         // resolve app package id (app.json or AndroidManifest)
         let appPackage = null;
         try {
-            const appJsonPath = path.join(workspace, 'app.json');
+            const appJsonPath = path.join(workspace.path, 'app.json');
             if (fs.existsSync(appJsonPath)) {
                 const raw = fs.readFileSync(appJsonPath, 'utf8');
                 try {
@@ -226,7 +256,7 @@ function plugin(imports, register) {
                 } catch (_) { }
             }
             if (!appPackage) {
-                const manifest = path.join(workspace, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+                const manifest = path.join(workspace.path, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
                 if (fs.existsSync(manifest)) {
                     const raw = fs.readFileSync(manifest, 'utf8');
                     const m = raw.match(/package=\"([^\"]+)\"/);
@@ -242,7 +272,7 @@ function plugin(imports, register) {
         function logLine(serial, rawLine) {
             // Emit raw logcat output exactly as produced by adb (no reformatting)
             // try { out('[ADB-' + serial + '] ' + rawLine); } catch (_) { console.log(rawLine); }
-            try { if (Log && Log.append) Log.append(rawLine); } catch (_) { }
+            try { if (out) out(rawLine); } catch (_) { }
         }
 
         function makeCollector(serial) {

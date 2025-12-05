@@ -75,7 +75,7 @@ function plugin(imports, register) {
         const args = Array.prototype.slice.call(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
         const msg = args.join(' ');
         try {
-            Log._echo('[ERROR] ' + msg, true, true);
+            Log._echo('[ERROR] ' + (msg.message || msg), true, true);
             return;
         } catch (_) { }
         console.error(msg);
