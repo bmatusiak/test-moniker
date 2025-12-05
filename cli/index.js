@@ -35,7 +35,7 @@ import processPlugin from './process.js';
             plugin.consumes = [];
             plugin.provides = ['globals'];
             function plugin( imports, register) {
-                register(null, { globals: {} });
+                register(null, { globals: {} });//leave plugin empty to hold state
             }
             return plugin;
         })()
