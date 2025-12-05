@@ -9,7 +9,6 @@ const devicePlugin = require('../device_manager.js');
 // const globalsPlugin = require('../globals.js');
 // const logPlugin = require('../log.js');
 const nodejsPlugin = require('../nodejs.js');
-const { get } = require('http');
 // const processPlugin = require('../process_manager.js');
 // const workspacePlugin = require('../workspace.js');
 
