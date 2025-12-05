@@ -708,6 +708,12 @@ function adbLogCat(done) {
             }
         } catch (_) { pid = null; }
 
+        // clear device logcat buffer before starting collection
+        try {
+            try { device_manager.safeExec('adb', ['-s', serial, 'logcat', '-c']); } catch (_) { /* ignore */ }
+            try { Log.append('[DEVICE] Cleared logcat on ' + serial); } catch (_) {}
+        } catch (_) {}
+
         if (pid) {
             lc.setup('adb', ['-s', serial, 'logcat', '--pid', pid], { stdio: 'pipe' });
         } else {
