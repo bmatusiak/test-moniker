@@ -39,20 +39,52 @@ function startEmulator(avdName, options) {
     }
 }
 
-function captureBugreport(outDir, serial) {
+function captureBugreportSync(outDir, serial) {
     try {
         if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-        const fullCmd = (serial ? `adb -s ${serial} bugreport` : 'adb bugreport') + ` ${outDir}`;// save dumpstate zip to outDir
+        const fullCmd = (serial ? `adb -s ${serial} bugreport` : 'adb bugreport') + ` ${outDir}`; // save dumpstate zip to outDir
         const r = spawnSync(fullCmd, { shell: true, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
         if (r.status === 0) {
             return { ok: true, output: r.stdout };
-        }else {
-            return { ok: true, output: r.stderr || '~BUGREPORT FAILED' };
+        } else {
+            return { ok: false, output: r.stderr || '~BUGREPORT FAILED' };
         }
-        // return { ok: false, path: outFile + '.err.txt', stderr: String(r.stderr || '') };
     } catch (e) {
         return { ok: false, error: String(e) };
+    }
+}
+
+// Async version that accepts a callback `cb(result)` and streams output to disk.
+function captureBugreport(outDir, serial, cb) {
+    try {
+        if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+    } catch (e) {
+        if (typeof cb === 'function') return cb({ ok: false, output: String(e) });
+        return { ok: false, output: String(e) };
+    }
+
+    const args = serial ? ['-s', serial, 'bugreport', outDir] : ['bugreport', outDir];
+    try {
+        const child = spawn('adb', args);
+        let stderr = '';
+        let outPut = '';
+        child.stdout.on('data', (d) => { try { outPut += String(d); } catch (_) {} });
+        child.stderr.on('data', (d) => { try { stderr += String(d); } catch (_) {} });
+        child.on('error', (err) => {
+            if (typeof cb === 'function') return cb({ ok: false, output: String(err) });
+        });
+        child.on('close', (code) => {
+            if (code === 0) {
+                if (typeof cb === 'function') return cb({ ok: true, output: outPut });
+            } else {
+                if (typeof cb === 'function') return cb({ ok: false, output: stderr || '~BUGREPORT FAILED'  });
+            }
+        });
+        return { ok: true, async: true, pid: child.pid };
+    } catch (e) {
+        if (typeof cb === 'function') return cb({ ok: false, output: String(e) });
+        return { ok: false, output: String(e) };
     }
 }
 
@@ -79,5 +111,6 @@ module.exports = {
     listDevices,
     startEmulator,
     captureBugreport,
+    captureBugreportSync,
     captureLogcat
 };

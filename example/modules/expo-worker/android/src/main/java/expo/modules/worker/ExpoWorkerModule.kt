@@ -20,7 +20,29 @@ class ExpoWorkerModule : Module() {
     }
 
     Function("simulateCrash") {
-      throw RuntimeException("Simulated Native Crash from Expo Worker Module")
+      try {
+        // Throw a Java exception to simulate a crash.
+        throw RuntimeException("Simulated Native Java/Kotlin Crash");
+      } catch (e: Exception) {
+        // rethrow to JavaScript
+        throw e
+      }
+    }
+
+
+    Function("simulateFatalCrash") {
+      try {
+        // Attempt to trigger a native C++ crash via the helper. This will intentionally SIGSEGV.
+        try {
+          NativeCrash.triggerCrash()
+        } catch (t: Throwable) {
+          // If native library not available or call failed, fall back to a Java exception so tests still exercise crash handling.
+          throw RuntimeException("Simulated Native C++ Fatal Crash (fallback)", t)
+        }
+      } catch (e: Exception) {
+        // rethrow to JavaScript
+        throw e
+      }
     }
 
     // Defines event names that the module can send to JavaScript.

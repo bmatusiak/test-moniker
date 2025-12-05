@@ -59,6 +59,8 @@ function process_manager(processName) {
     proc.cmd = null;
     proc.args = [];
     proc.opts = {};
+    proc.stopping = false;
+    proc.restarting = false;
 
     function setupProcess(cmd = null, args = [], opts = {}){
         proc.cmd = cmd;
@@ -86,20 +88,22 @@ function process_manager(processName) {
         }
         $child = longRun(proc.cmd, proc.args, proc.opts);
         hookEvents();
+        proc.restarting = false;
         proc.emit('start');
     }
     proc.start = runProcess;
 
     function stopProcess(){
+        proc.stopping = true;
         $child?.stop();
     }
     proc.stop = stopProcess;
 
     function restartProcess(){
+        proc.restarting = true;
         if($child){
             stopProcess();
         }
-        runProcess();
     }
     proc.restart = restartProcess;
 
@@ -108,15 +112,22 @@ function process_manager(processName) {
             return;
         }
         $child.on('exit', (code, signal) => {
+            proc.stopping = false;
             proc.emit('close', code, signal);
+            if(proc.restarting){
+                runProcess();
+            }
         });
         $child.on('error', (err) => {
+            if(proc.stopping) return;
             proc.emit('error', err);
         });
         $child.stdout.on('data', data => {
+            if(proc.stopping) return;
             proc.emit('stdout', data);
         });
         $child.stderr.on('data', data => {
+            if(proc.stopping) return;
             proc.emit('stderr', data);
         });
     }
