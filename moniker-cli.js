@@ -119,6 +119,7 @@ cli('--log')
     .flags({ pre: true })
     .do((values) => {
         _LOG_PATH_OVERRIDE = typeof values.log === 'string' ? values.log : _LOG_PATH_OVERRIDE;
+        _LOG_ENABLED = true;
     });
 
 cli('--ci')
@@ -144,7 +145,10 @@ cli('--json','-j')
 cli('--capture-bugreport-on-crash')
     .info('Automatically capture adb bugreport when a crash is detected')
     .flags({ pre: true })
-    .do(() => { _CAPTURE_ON_CRASH = true; });
+    .do(() => { 
+        _CAPTURE_ON_CRASH = true; 
+        _LOG_ENABLED = true;
+    });
 
 cli('--config')
     .info('Path to moniker config file (relative to workspace)')
@@ -443,7 +447,7 @@ cli('doctor')
 cli('--start-dev-server','-s')
     .info('Start the metro development server')
     .do(() => {
-        let metro, _builder, logcat, exitCode = 0;
+        let metro, _builder, logcat, exitCode = 0, catpureing = false;
         tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
         metro = startMeroServer(//ready, close, done, error
             () => {//ready
@@ -466,20 +470,24 @@ cli('--start-dev-server','-s')
                                 // capture bugreport on crash keywords
                                 try {
                                     if (_CAPTURE_ON_CRASH) {
+                                        if(catpureing) return;
+                                        catpureing = true;
                                         try {
                                             console.log('[CRASH HANDLER] Capturing bugreport for device', serial + '... This could take a while.');
-                                            const ts = Date.now();
-                                            const outPath = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
-                                            device_manager.captureBugreport(outPath, serial, () => {     
-                                                exitCode = 1;// indicate failure due to crash
-                                                //stopping metro will also stop                                           
-                                                logcat.stop();
-                                            });
-                                            try { if (Log && Log.append) Log.append('[DEVICE] Captured bugreport: ' + outPath); } catch (_) {}
-                            
+                                            // const ts = Date.now();
+                                            // const fs = require('fs');
+                                            const path = require('path');
+                                            const logDir = (Log && Log.path) ? path.join(workspace, path.dirname(Log.path)) : path.join(workspace, 'logs');
+                                            // try { if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true }); } catch (_) {}
+                                            // const outPath = path.join(logDir, 'bugreport-' + ts );
+                                            console.log('[CRASH HANDLER] Saving bugreport to folder', logDir);
+                                            const crasRes = device_manager.captureBugreport(logDir, serial);
+                                            try { exitCode = 1; } catch (_) {}
+                                            try { if (Log && Log.append) Log.append('[DEVICE] Captured bugreport: ' + (crasRes && crasRes.output ? crasRes.output : outPath)); } catch (_) {}
+                                            try { logcat.stop(); } catch (_) {}
                                         } catch (_) {}
-                                    }else {
-                                        //stopping log cat will stop metro 
+                                    } else {
+                                        // stopping log cat will stop metro
                                         logcat.stop();
                                     }
                                 } catch (_) {}
@@ -750,7 +758,7 @@ function adbLogCat(done, crashDetect) {
             buffer = parts.pop();
             for (const line of parts) {
                 if (!line) continue;
-                logLine(serial, line);
+                // logLine(serial, line);
                 // capture bugreport on crash keywords
                 try {
                     if (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal')) {

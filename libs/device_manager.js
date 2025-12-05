@@ -39,18 +39,18 @@ function startEmulator(avdName, options) {
     }
 }
 
-function captureBugreport(outFile, serial) {
+function captureBugreport(outDir, serial) {
     try {
-        const dir = path.dirname(outFile);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        const fullCmd = serial ? `adb -s ${serial} bugreport` : 'adb bugreport';
+        if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+        const fullCmd = (serial ? `adb -s ${serial} bugreport` : 'adb bugreport') + ` ${outDir}`;// save dumpstate zip to outDir
         const r = spawnSync(fullCmd, { shell: true, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
         if (r.status === 0) {
-            fs.writeFileSync(outFile, r.stdout);
-            return { ok: true, path: outFile };
+            return { ok: true, output: r.stdout };
+        }else {
+            return { ok: true, output: r.stderr || '~BUGREPORT FAILED' };
         }
-        fs.writeFileSync(outFile + '.err.txt', String(r.stderr || ''));
-        return { ok: false, path: outFile + '.err.txt', stderr: String(r.stderr || '') };
+        // return { ok: false, path: outFile + '.err.txt', stderr: String(r.stderr || '') };
     } catch (e) {
         return { ok: false, error: String(e) };
     }
