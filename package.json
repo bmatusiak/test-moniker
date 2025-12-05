@@ -17,6 +17,7 @@
     "react-native": "*"
   },
   "dependencies": {
-    "events": "^3.3.0"
+    "events": "^3.3.0",
+    "rectify": "github:bmatusiak/rectify"
   }
 }

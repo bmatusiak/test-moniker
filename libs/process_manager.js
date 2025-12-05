@@ -113,7 +113,7 @@ function process_manager(processName) {
         }
         $child.on('exit', (code, signal) => {
             proc.stopping = false;
-            proc.emit('close', code, signal);
+            proc.emit('close', code == null ? 0 : code, signal);
             if(proc.restarting){
                 runProcess();
             }
