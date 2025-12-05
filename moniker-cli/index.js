@@ -32,4 +32,6 @@ const workspacePlugin = require('./workspace.js');
     var build = rectify.build(config);
 
     var app = await build.start();
+
+
 })();

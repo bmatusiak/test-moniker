@@ -294,7 +294,7 @@ function plugin(imports, register) {
                 .info('Show help information')
                 .do(() => {
                     var helpText = '\t' + (cli._info || []).join('\n\t');
-                    console.log(`${cli.description ? cli.description + '\n' : ''}Usage: moniker [options]\n\nOptions:\n${helpText}`);
+                    console.log(`${cli.description ? cli.description + '\n' : ''}Usage: moniker [options]\n\nOptions:\n${helpText}\n`);
                 });
             cli._helpAdded = true;
         }

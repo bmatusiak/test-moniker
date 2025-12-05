@@ -41,7 +41,7 @@ function checkCycles(config) {
     var plugins = [];
     config.forEach(function (pluginConfig, index) {
         plugins.push({
-            packagePath: pluginConfig.packagePath,
+            // packagePath: pluginConfig.packagePath,
             provides: pluginConfig.provides.concat(),
             consumes: pluginConfig.consumes.concat(),
             i: index
@@ -90,8 +90,8 @@ function checkCycles(config) {
                 if (unresolved[name] == false)
                     return;
                 if (!unresolved[name])
-                    unresolved[name] = [];
-                unresolved[name].push(plugin.packagePath);
+                    unresolved[name] = true;
+                // unresolved[name].push(plugin.packagePath);
             });
             plugin.provides.forEach(function (name) {
                 unresolved[name] = false;
@@ -102,11 +102,13 @@ function checkCycles(config) {
             if (unresolved[name] == false)
                 delete unresolved[name];
         });
+        unresolved = Object.keys(unresolved);
 
         console.error('Could not resolve dependencies of these plugins:', plugins);
         console.error('Resolved services:', Object.keys(resolved));
         console.error('Missing services:', unresolved);
-        throw new Error('Could not resolve dependencies');
+        // throw new Error('Could not resolve rectify dependencies: ' + unresolved.join(', '));
+        return false;
     }
 
     return sorted;
@@ -154,6 +156,16 @@ class Rectify extends EventEmitter {
         var destructors = [];
 
         app.start = async function (callback) {
+            if (!sortedPlugins) {
+                //check if listeners are attached
+                if (app.listeners('error').length > 0) {
+                    return app.emit('error', 'Could not rectify dependencies');
+                } else {
+                    console.error('Could not rectify dependencies.. Exiting.');
+                    process.exit(1);
+                }
+                return;
+            }
             if (callback) app.on('ready', callback);
             var plugin = sortedPlugins.shift();
             if (!plugin)
