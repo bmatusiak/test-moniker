@@ -19,6 +19,8 @@ function plugin(imports, register) {
             const push = (k, v) => results.push({ key: k, value: v });
 
             push('globals', globals);
+            push('workspace', globals.workspace);
+
             const adb = se('adb', ['version']);
             push('adb', adb.ok ? 'ok' : ('missing: ' + (adb.stderr || adb.stdout)));
 

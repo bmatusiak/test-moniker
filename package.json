@@ -7,7 +7,7 @@
   "type": "commonjs",
   "main": "index.js",
   "bin": {
-    "test-moniker": "./moniker-cli.js"
+    "test-moniker": "./moniker-cli/index.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

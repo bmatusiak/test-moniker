@@ -28,10 +28,12 @@ function plugin(imports, register) {
         .flags({ pre: true })
         .do(() => { globals.FORCE = true; });
 
+    globals.DRY_RUN = false;
     cli('--dry-run', '-n')
         .info('Show actions without executing')
         .do(() => { globals.DRY_RUN = true; });
 
+    globals.VERBOSE = false;
     // verbosity and dry-run
     cli('--verbose', '-V')
         .info('Enable verbose output')

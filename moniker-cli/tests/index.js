@@ -28,7 +28,29 @@ const workspacePlugin = require('./workspace.js');
         workspacePlugin
     ];
 
-    var build = rectify.build(config);
+    var app = rectify.build(config);
 
-    var app = await build.start();
+    var main = await app.start();
+
+    function testLib() {
+
+        let failures = 0;
+        let passes = 0;
+
+        function assert(cond, msg) {
+            if (!cond) {
+                console.error('FAIL:', msg);
+                failures++;
+            } else {
+                console.log('OK:  ', msg);
+                passes++;
+            }
+        }
+
+        return { assert, passes, failures };
+    }
+
+    // build tests here
+
+
 })();
