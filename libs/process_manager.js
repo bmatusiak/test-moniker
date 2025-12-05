@@ -13,19 +13,19 @@ function process_manager(processName) {
         var prog = process_manager('myProcess');//named process ( can be setup once and reused )
         prog.setup('node', ['myScript.js'], {cwd: '/path/to/dir'});//setup command, args and options ( required to once before start )
         prog.on('exit', (code, signal) => {
-            console.log(`Process exited with code ${code} and signal ${signal}`);
+            pmOut(`Process exited with code ${code} and signal ${signal}`);
         });
         prog.on('error', (err) => {
-            console.error('Process error:', err);
+            pmErr('Process error:', err);
         });
         prog.on('start', () => {
-            console.log('Process started');
+            pmOut('Process started');
         });
         prog.on('stdout', (data) => {
-            console.log('STDOUT:', data);
+            pmOut('STDOUT:', data);
         });
         prog.on('stderr', (data) => {
-            console.error('STDERR:', data);
+            pmErr('STDERR:', data);
         });
         prog.start();
         setTimeout(() => {
@@ -37,7 +37,7 @@ function process_manager(processName) {
         setTimeout(() => {
             process_manager.stop('myProcess');//stop by name
             prog.once('exit', () => {
-                console.log('Process fully stopped');
+                pmOut('Process fully stopped');
                 prog.start();
             });
         }, 20000);
@@ -130,6 +130,28 @@ function process_manager(processName) {
     return proc;
 };
 
+// small logger helpers that prefer the global MonikerLog when available
+function pmOut() {
+    const args = Array.prototype.slice.call(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
+    const msg = args.join(' ');
+    try {
+        if (global && global.MonikerLog && global.MonikerLog.echo) {
+            try { global.MonikerLog.echo(msg); return; } catch (_) {}
+        }
+    } catch (_) {}
+    console.log(msg);
+}
+function pmErr() {
+    const args = Array.prototype.slice.call(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
+    const msg = args.join(' ');
+    try {
+        if (global && global.MonikerLog && global.MonikerLog.echo) {
+            try { global.MonikerLog.echo('[ERROR] ' + msg); return; } catch (_) {}
+        }
+    } catch (_) {}
+    console.error(msg);
+}
+
 function stopByName(name){
     if(!name) {
         process_manager.stopAll();
@@ -160,7 +182,7 @@ function longRun(cmd, args = [], opts = {}) {
 
         const CTRL_C = '\x03';
         if (child.stdin && !child.killed) {
-            if (verbose) console.log('Sending Ctrl+C to child stdin...');
+            if (verbose) pmOut('Sending Ctrl+C to child stdin...');
             try { child.stdin.write(CTRL_C); } catch (_) {}
         }
 

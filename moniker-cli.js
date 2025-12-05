@@ -38,7 +38,14 @@ let workspace = (function findWorkspace() {
 // Friendly notice when not using silent mode
 if (!process.argv.includes('--silent') && !process.argv.includes('-s')) {
     try {
-        console.log('Using workspace:', workspace);
+        // use Log.echo when available, otherwise fallback to console
+        try {
+            if (typeof Log !== 'undefined' && Log && Log.echo) {
+                Log.echo('Using workspace: ' + workspace);
+            } else {
+                console.log('Using workspace:', workspace);
+            }
+        } catch (_) { console.log('Using workspace:', workspace); }
     } catch (_) {}
 }
 
@@ -51,6 +58,28 @@ try {
 const _makeLogManager = require('./libs/log_manager');
 let Log = null;
 let _LOG_JSON = false;
+
+// output helpers use Log.echo when available (JSON mode), otherwise fallback
+function out() {
+    const args = Array.prototype.slice.call(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
+    const msg = args.join(' ');
+    try {
+        if (Log && Log.echo) {
+            try { Log.echo(msg); return; } catch (_) {}
+        }
+    } catch (_) {}
+    console.log(msg);
+}
+function err() {
+    const args = Array.prototype.slice.call(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
+    const msg = args.join(' ');
+    try {
+        if (Log && Log.echo) {
+            try { Log.echo('[ERROR] ' + msg); return; } catch (_) {}
+        }
+    } catch (_) {}
+    console.error(msg);
+}
 
 // intermediate values set by pre-run flag handlers
 let _CONFIG_PATH = null;
@@ -65,6 +94,8 @@ let _LOG_ENABLED = false;
 let CI_MODE = false;
 let FORCE = false;
 let _CONFIG = null;
+const device_manager = require('./libs/device_manager');
+let _CAPTURE_ON_CRASH = false;
 
 const process_manager = require('./libs/process_manager');
 
@@ -73,12 +104,12 @@ function stopAllChildren() {
 }
 
 process.on('SIGINT', () => {
-    console.log('\nReceived SIGINT — stopping child processes...');
+    out('\nReceived SIGINT — stopping child processes...');
     stopAllChildren();
     process.exit(130);
 });
 process.on('SIGTERM', () => {
-    console.log('\nReceived SIGTERM — stopping child processes...');
+    out('\nReceived SIGTERM — stopping child processes...');
     stopAllChildren();
     process.exit(143);
 });
@@ -104,6 +135,16 @@ cli('--json-log','-j')
     .info('Write machine-readable JSON log (use JSON log format)')
     .flags({ pre: true })
     .do(() => { _LOG_JSON = true; });
+
+// register a generic json flag for commands that support JSON output
+cli('--json','-j')
+    .info('Output JSON from commands')
+    .do(() => {});
+
+cli('--capture-bugreport-on-crash')
+    .info('Automatically capture adb bugreport when a crash is detected')
+    .flags({ pre: true })
+    .do(() => { _CAPTURE_ON_CRASH = true; });
 
 cli('--config')
     .info('Path to moniker config file (relative to workspace)')
@@ -151,7 +192,110 @@ cli('--workspace','-w')
 cli('--print-workspace','-p')
     .info('Print the resolved workspace available to handlers')
     .do((values) => {
-        console.log('workspace (from handler values):', values && values.workspace ? values.workspace : process.env.TEST_MONIKER_WORKSPACE);
+        out('workspace (from handler values):', values && values.workspace ? values.workspace : process.env.TEST_MONIKER_WORKSPACE);
+    });
+
+// doctor: environment and health checks
+cli('doctor')
+    .info('Run environment and health diagnostics')
+    .flags('--json','-j')
+    .do((values) => {
+        try {
+            const results = [];
+            const se = device_manager.safeExec;
+            const push = (k, v) => results.push({ key: k, value: v });
+
+            const adb = se('adb', ['version']);
+            push('adb', adb.ok ? 'ok' : ('missing: ' + (adb.stderr || adb.stdout)));
+
+            const java = se('java', ['-version']);
+            push('java', java.ok ? 'ok' : ('missing: ' + (java.stderr || java.stdout)));
+
+            const sdk = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME || null;
+            push('android_sdk', sdk ? sdk : 'NOT SET');
+
+            const avds = se('emulator', ['-list-avds']);
+            push('avds', avds.ok ? (avds.stdout || '').trim().split(/\r?\n/).filter(Boolean) : []);
+
+            const portCheck = se('node', ['-e', 'const net=require(\'net\'); const s=net.createConnection(8081,\'127.0.0.1\'); s.on(\'connect\',()=>{console.log(\'open\'); s.destroy(); process.exit(0)}); s.on(\'error\',()=>{console.log(\'closed\'); process.exit(1)}); setTimeout(()=>{console.log(\'closed\'); process.exit(1)},1500);']);
+            push('metro_port_8081', portCheck.status === 0 ? 'in-use' : 'free');
+
+            const portCheck19000 = se('node', ['-e', 'const net=require(\'net\'); const s=net.createConnection(19000,\'127.0.0.1\'); s.on(\'connect\',()=>{console.log(\'open\'); s.destroy(); process.exit(0)}); s.on(\'error\',()=>{console.log(\'closed\'); process.exit(1)}); setTimeout(()=>{console.log(\'closed\'); process.exit(1)},1500);']);
+            push('expo_port_19000', portCheck19000.status === 0 ? 'in-use' : 'free');
+
+            const devices = device_manager.listDevices();
+            push('adb_devices', devices);
+
+            // per-device properties
+            try {
+                const perDev = [];
+                for (const d of devices) {
+                    try {
+                        const serial = d && d.serial;
+                        if (!serial) continue;
+                        const model = se('adb', ['-s', serial, 'shell', 'getprop', 'ro.product.model']);
+                        const manufacturer = se('adb', ['-s', serial, 'shell', 'getprop', 'ro.product.manufacturer']);
+                        const sdk = se('adb', ['-s', serial, 'shell', 'getprop', 'ro.build.version.sdk']);
+                        const abi = se('adb', ['-s', serial, 'shell', 'getprop', 'ro.product.cpu.abi']);
+                        perDev.push({ serial, model: (model.stdout||model.stderr||'').trim(), manufacturer: (manufacturer.stdout||manufacturer.stderr||'').trim(), sdk: (sdk.stdout||sdk.stderr||'').trim(), abi: (abi.stdout||abi.stderr||'').trim(), status: d.status });
+                    } catch (_) {}
+                }
+                push('adb_device_props', perDev);
+            } catch (_) {}
+
+            // emulator process check (pgrep may not exist, tolerate failures)
+            try {
+                const pgrep = se('pgrep', ['-f', 'emulator']);
+                const pids = pgrep.ok ? (pgrep.stdout || '').trim().split(/\r?\n/).filter(Boolean) : [];
+                push('emulator_pids', pids);
+            } catch (_) {}
+
+            // expo + gradle + workspace checks
+            try {
+                const expo = se('npx', ['expo', '--version']);
+                push('expo_cli', expo.ok ? (expo.stdout || expo.stderr || '').trim() : null);
+            } catch (_) { push('expo_cli', null); }
+
+            try {
+                const gradlew = require('fs').existsSync(require('path').join(workspace, 'android', 'gradlew'));
+                push('workspace_gradlew', !!gradlew);
+            } catch (_) { push('workspace_gradlew', false); }
+
+            // extra machine-readable checks
+            try {
+                const os = require('os');
+                push('node_version', process.version);
+                push('platform', os.platform());
+                push('arch', os.arch());
+                push('cpus', os.cpus() && os.cpus().length);
+                push('total_mem', os.totalmem());
+                push('free_mem', os.freemem());
+            } catch (_) {}
+
+            try {
+                const pkgExists = require('fs').existsSync(require('path').join(workspace, 'package.json'));
+                const appJsonExists = require('fs').existsSync(require('path').join(workspace, 'app.json'));
+                push('workspace_has_package_json', !!pkgExists);
+                push('workspace_has_app_json', !!appJsonExists);
+            } catch (_) {}
+
+            const parsed = cli.parseArgs && cli.parseArgs();
+            const asJson = (values && (values.json || values['--json'] || values['-j'])) || (parsed && (parsed.flags && (parsed.flags.json || parsed.flags.j)));
+            if (asJson) {
+                out(JSON.stringify(results));
+            } else {
+                out('\nMoniker Doctor Results:');
+                for (const r of results) {
+                    out('- ' + r.key + ':', Array.isArray(r.value) ? JSON.stringify(r.value) : r.value);
+                }
+            }
+
+            if (Log && Log.append) {
+                try { Log.append('[DOCTOR] ' + JSON.stringify(results)); } catch (_) {}
+            }
+        } catch (e) {
+            err('Doctor failed:', e);
+        }
     });
 
 cli('--start-dev-server','-s')
@@ -180,7 +324,7 @@ cli('--start-dev-server','-s')
             }, () => {// done
                 logcat.stop();
             }, (error) => {// error
-                console.log('Metro server error:', error);
+                err('Metro server error:', error);
                 logcat.stop();
                 metro.stop();
             });
@@ -216,8 +360,8 @@ if (typeof require !== 'undefined' && require.main === module) {
             if (!FORCE) {
                 const okWorkspace = fs.existsSync(path.join(workspace, 'app.json')) || fs.existsSync(path.join(workspace, 'package.json'));
                 if (!okWorkspace) {
-                    console.error('ERROR: workspace does not contain app.json or package.json:', workspace);
-                    console.error('Use --force to override.');
+                    err('ERROR: workspace does not contain app.json or package.json:', workspace);
+                    err('Use --force to override.');
                     process.exit(1);
                 }
             }
@@ -232,6 +376,7 @@ if (typeof require !== 'undefined' && require.main === module) {
                     Log.enabled = true;
                     Log.silent = true;
                 }
+                try { global.MonikerLog = Log; } catch (_) {}
             } catch (_) { Log = null; }
 
             // inject the resolved workspace into the values object for any registered action
@@ -244,13 +389,13 @@ if (typeof require !== 'undefined' && require.main === module) {
                 }
             }
         } catch (e) {
-            try { console.error('Pre-run hook error:', e); } catch (_) {}
+            try { err('Pre-run hook error:', e); } catch (_) {}
         }
     };
 
     const ok = cli.run();
     if(!ok) {
-        console.log('No actions run.');
+        out('No actions run.');
     }
 }
 
@@ -277,7 +422,7 @@ function startMeroServer(ready, close, done, error) {
             metroBuf = lines.pop();
             for (let i = 0; i < lines.length; i++) {
                 const line = '[METRO] ' + lines[i];
-                if (!Log.silent) process.stdout.write(line + '\n');
+                if (!Log.silent) out(line);
                 Log.append(line);
             }
         } catch (_) {}
@@ -286,7 +431,7 @@ function startMeroServer(ready, close, done, error) {
     metro.on('stdout', (chunk) =>  logger(chunk));
 
     metro.on('close', (code) => {
-        console.log(`Metro server exited with code ${code}`);
+        out(`Metro server exited with code ${code}`);
         if (close) close(code);
     });
 
@@ -308,9 +453,19 @@ function buildAndInstall(ready, close, intalled, open, failed) {
         builderBuf = lines.pop();
         for (let i = 0; i < lines.length; i++) {
             const line = '[BUILD] ' + lines[i];
-            if(!Log.silent)
-                process.stdout.write(line + '\n');
+            if(!Log.silent) out(line);
             Log.append(line);
+            // capture bugreport when crash keywords seen
+            try {
+                if (_CAPTURE_ON_CRASH && (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal'))) {
+                    try {
+                        const ts = Date.now();
+                        const out = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
+                        device_manager.captureBugreport(out);
+                        Log.append('[DEVICE] Captured bugreport: ' + out);
+                    } catch (_) {}
+                }
+            } catch (_) {}
         }
     }
 
@@ -326,17 +481,17 @@ function buildAndInstall(ready, close, intalled, open, failed) {
                 if (open) open();
             }
             if (s.includes('BUILD FAILED')) {
-                console.log('Build failed');
+                err('Build failed');
                 if (failed) failed();
             }
             logger(data);
-        } catch (_) { console.log(_);}
+        } catch (_) { err(_);}
     });
-    builder.on('stderr', (data) => { try { logger(data); } catch (_) { console.log(_); } });
+    builder.on('stderr', (data) => { try { logger(data); } catch (_) { err(_); } });
 
 
     builder.on('close', (code) => {
-        console.log(`Builder exited with code ${code}`);
+        out(`Builder exited with code ${code}`);
         if (close) close(code);
         if (ready) ready(installed && opening);
     });
@@ -369,8 +524,19 @@ function adbLogCat(done) {
         for (let i = 0; i < lines.length; i++) {
             const line = '[ADB] ' + lines[i];
             // if (line.includes('ReactNativeJS') || line.includes('ReactNative') || line.includes('RCTLog') || line.includes('Hermes')) 
-            process.stdout.write(line + '\n');
+            out(line);
             Log.append(line);
+            // capture bugreport when crash keywords seen
+            try {
+                if (_CAPTURE_ON_CRASH && (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal'))) {
+                    try {
+                        const ts = Date.now();
+                        const out = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
+                        device_manager.captureBugreport(out);
+                        Log.append('[DEVICE] Captured bugreport: ' + out);
+                    } catch (_) {}
+                }
+            } catch (_) {}
         }
     }
 
@@ -408,12 +574,12 @@ function adbLogCat(done) {
         if (!skip) {
             try {
                 logger(data);
-            } catch (_) {console.log(_);}
+            } catch (_) {err(_);} 
         }
     });
 
     logcat.on('close', (code) => {
-        console.log(`adb logcat exited with code ${code}`);
+        out(`adb logcat exited with code ${code}`);
         if(done) done(code);
     });
 
