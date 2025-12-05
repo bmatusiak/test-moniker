@@ -1,10 +1,10 @@
 
 
-plugin.consumes = ['cli', 'workspace', 'device_manager', 'Log', 'nodejs'];
+plugin.consumes = ['cli', 'workspace', 'device_manager', 'Log', 'nodejs', 'globals'];
 plugin.provides = ['doctor'];
 
 function plugin(imports, register) {
-    var { cli, workspace, device_manager, Log, nodejs } = imports;
+    var { cli, workspace, device_manager, Log, nodejs, globals } = imports;
     const os = nodejs.os;
     const fs = nodejs.fs;
     const path = nodejs.path;
@@ -18,6 +18,7 @@ function plugin(imports, register) {
             const se = device_manager.safeExec;
             const push = (k, v) => results.push({ key: k, value: v });
 
+            push('globals', globals);
             const adb = se('adb', ['version']);
             push('adb', adb.ok ? 'ok' : ('missing: ' + (adb.stderr || adb.stdout)));
 
@@ -262,6 +263,7 @@ function plugin(imports, register) {
         .flags('--json', '-j')
         .do((values) => {
             runDoctor();
+            process.exit(0);
         });
 
 
