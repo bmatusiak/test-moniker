@@ -451,12 +451,17 @@ cli('--start-dev-server','-s')
                     false, // ready
                     false,// close
                     () => {// installed
+                        // logcat = adbLogCat(//done
+                        //     () => {//done
+                        //         metro.stop();
+                        //     });
+                    },
+                    () => {// opening
                         logcat = adbLogCat(//done
                             () => {//done
                                 metro.stop();
                             });
                     },
-                    false,// opening
                     ()=> {// failed
                         metro.stop();
                     });
