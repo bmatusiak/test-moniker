@@ -114,7 +114,7 @@ function plugin(imports, register) {
                                                 err('[CRASH HANDLER] Saving bugreport to folder ' + logDir);
                                                 device_manager.captureBugreport(logDir, serial, (crasRes) => {
                                                     let ol = '[CRASH HANDLER] Captured bugreport: ' + (crasRes && crasRes.output ? crasRes.output : outPath);
-                                                    try { err(ol); } catch (_) { console.log(ol); }
+                                                    // try { err(ol); } catch (_) { console.log(ol); }
                                                     try { if (out) out(ol); } catch (_) { }
                                                     try { logcat.stop(); } catch (_) { }
                                                 });
@@ -169,7 +169,6 @@ function plugin(imports, register) {
                 metroBuf = lines.pop();
                 for (let i = 0; i < lines.length; i++) {
                     const line = '[METRO] ' + lines[i];
-                    if (!Log.silent) out(line);
                     out(line);
                 }
             } catch (_) { }
@@ -201,7 +200,6 @@ function plugin(imports, register) {
             builderBuf = lines.pop();
             for (let i = 0; i < lines.length; i++) {
                 const line = '[BUILD] ' + lines[i];
-                if (!Log.silent) out(line);
                 out(line);
             }
         }
@@ -224,7 +222,11 @@ function plugin(imports, register) {
                 logger(data);
             } catch (_) { err(_); }
         });
-        builder.on('stderr', (data) => { try { logger(data); } catch (_) { err(_); } });
+        builder.on('stderr', (data) => {
+            try {
+                logger(data);
+            } catch (_) { err(_); }
+        });
 
 
         builder.on('close', (code) => {

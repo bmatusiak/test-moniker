@@ -67,7 +67,7 @@ function plugin(imports, register) {
         try {
             Log._echo(msg, false, true);
             return;
-        } catch (_) { }
+        } catch (_) { console.log(_) }
         console.log(msg);
     };
     Log.err = function err() {
