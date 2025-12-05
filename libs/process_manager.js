@@ -130,12 +130,6 @@ function process_manager(processName) {
     return proc;
 };
 
-function stopAll(){
-    Object.values(loadedProcesses).forEach(proc => {
-        proc.stop();
-    });
-}
-
 function stopByName(name){
     if(!name) {
         process_manager.stopAll();
