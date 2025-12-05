@@ -125,3 +125,32 @@ function plugin(imports, register) {
 }
 
 module.exports = plugin;
+
+
+plugin.test = function (assert, loadPlugin) {
+
+    function reloadDM(argv) {
+        process.argv = ['node', 'script', ...argv];
+        return loadPlugin('cli')
+    }
+
+    function testSafeExec() {
+        const dm = loadPlugin('device_manager');
+        const r = dm.safeExec('node', ['-v']);
+        assert(r && typeof r === 'object' && typeof r.status === 'number', 'safeExec returns result object with status');
+    }
+
+    function testListDevices() {
+        const dm = loadPlugin('device_manager');
+        const d = dm.listDevices();
+        assert(Array.isArray(d), 'listDevices returns an array');
+    }
+
+    function runAll() {
+        testSafeExec();
+        testListDevices();
+    }
+
+    runAll();
+
+}
