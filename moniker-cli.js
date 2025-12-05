@@ -443,7 +443,7 @@ cli('doctor')
 cli('--start-dev-server','-s')
     .info('Start the metro development server')
     .do(() => {
-        let metro, _builder, logcat;
+        let metro, _builder, logcat, exitCode = 0;
         tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
         metro = startMeroServer(//ready, close, done, error
             () => {//ready
@@ -467,14 +467,19 @@ cli('--start-dev-server','-s')
                                 try {
                                     if (_CAPTURE_ON_CRASH) {
                                         try {
+                                            console.log('[CRASH HANDLER] Capturing bugreport for device', serial + '... This could take a while.');
                                             const ts = Date.now();
                                             const outPath = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
-                                            device_manager.captureBugreport(outPath, serial);
+                                            device_manager.captureBugreport(outPath, serial, () => {     
+                                                exitCode = 1;// indicate failure due to crash
+                                                //stopping metro will also stop                                           
+                                                logcat.stop();
+                                            });
                                             try { if (Log && Log.append) Log.append('[DEVICE] Captured bugreport: ' + outPath); } catch (_) {}
                             
                                         } catch (_) {}
                                     }else {
-                                        // metro.stop();
+                                        //stopping log cat will stop metro 
                                         logcat.stop();
                                     }
                                 } catch (_) {}
@@ -485,7 +490,7 @@ cli('--start-dev-server','-s')
                     });
             }, () => { //close
                 if(Log.enabled) console.log('Logs saved to ' + Log.path);
-                process.exit(0);//exit when metro stops
+                process.exit(exitCode);//exit when metro stops
             }, () => {// done
                 logcat.stop();
             }, (error) => {// error
