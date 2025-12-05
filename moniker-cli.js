@@ -241,6 +241,54 @@ cli('doctor')
                     } catch (_) {}
                 }
                 push('adb_device_props', perDev);
+                // check whether the app is installed on each device (if we know the package)
+                try {
+                    // compute app package id (try app.json then AndroidManifest)
+                    let appPkg = null;
+                    try {
+                        const fs = require('fs');
+                        const path = require('path');
+                        const appJsonPath = path.join(workspace, 'app.json');
+                        if (fs.existsSync(appJsonPath)) {
+                            const raw = fs.readFileSync(appJsonPath, 'utf8');
+                            try {
+                                const obj = JSON.parse(raw);
+                                if (obj && obj.expo && obj.expo.android && obj.expo.android.package) appPkg = obj.expo.android.package;
+                                else if (obj && obj.expo && obj.expo.package) appPkg = obj.expo.package;
+                            } catch (_) {}
+                        }
+                    } catch (_) {}
+                    if (!appPkg) {
+                        try {
+                            const fs = require('fs');
+                            const path = require('path');
+                            const manifest = path.join(workspace, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+                            if (fs.existsSync(manifest)) {
+                                const raw = fs.readFileSync(manifest, 'utf8');
+                                const m = raw.match(/package=\"([^\"]+)\"/);
+                                if (m) appPkg = m[1];
+                            }
+                        } catch (_) {}
+                    }
+
+                    const installedResults = [];
+                    for (const d of devices) {
+                        const serial = d && d.serial;
+                        if (!serial) continue;
+                        if (!appPkg) {
+                            installedResults.push({ serial, installed: null });
+                            continue;
+                        }
+                        try {
+                            const r = se('adb', ['-s', serial, 'shell', 'pm', 'list', 'packages', appPkg]);
+                            const ok = r.ok && ((r.stdout || r.stderr || '').indexOf('package:' + appPkg) !== -1);
+                            installedResults.push({ serial, installed: !!ok });
+                        } catch (_) {
+                            installedResults.push({ serial, installed: null });
+                        }
+                    }
+                    push('adb_app_installed', installedResults);
+                } catch (_) {}
             } catch (_) {}
 
             // emulator process check (pgrep may not exist, tolerate failures)
@@ -356,6 +404,33 @@ cli('doctor')
                     out('- ' + r.key + ':', Array.isArray(r.value) ? JSON.stringify(r.value) : r.value);
                 }
             }
+
+            // remediation hints for failed checks
+            try {
+                const hints = [];
+                const find = (k) => results.find(x => x.key === k);
+                const adbRes = find('adb');
+                if (!adbRes || adbRes.value !== 'ok') hints.push('ADB not found or not functional: install Android platform-tools and ensure `adb` is on PATH.');
+                const javaRes = find('java');
+                if (!javaRes || javaRes.value !== 'ok') hints.push('Java not found: install JDK 11+ and set JAVA_HOME.');
+                const sdkRes = find('android_sdk');
+                if (!sdkRes || sdkRes.value === 'NOT SET') hints.push('Android SDK not configured: set ANDROID_SDK_ROOT or ANDROID_HOME to your SDK path.');
+                const expoRes = find('expo_cli');
+                if (!expoRes || !expoRes.value) hints.push('Expo CLI not available: use `npm i -g expo-cli` or run via `npx expo`.');
+                const p8081 = find('metro_port_8081');
+                if (p8081 && p8081.value === 'free') hints.push('Metro server not running on 8081: start it with `npx expo start` or ensure port forwarding.');
+                const pkgRes = find('app_package');
+                if (!pkgRes || !pkgRes.value) hints.push('App package id not found: ensure app.json or AndroidManifest.xml declares the package.');
+                const installedList = find('adb_app_installed');
+                if (installedList && Array.isArray(installedList.value)) {
+                    for (const d of installedList.value) {
+                        if (d.installed === false) {
+                            hints.push(`App not installed on device ${d.serial}: install via 'adb -s ${d.serial} install <apk>' or use 'npx expo run:android'.`);
+                        }
+                    }
+                }
+                if (hints.length) push('hints', hints);
+            } catch (_) {}
 
             if (Log && Log.append) {
                 try { Log.append('[DOCTOR] ' + JSON.stringify(results)); } catch (_) {}
