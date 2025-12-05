@@ -255,6 +255,42 @@ cli('doctor')
                 const expo = se('npx', ['expo', '--version']);
                 push('expo_cli', expo.ok ? (expo.stdout || expo.stderr || '').trim() : null);
             } catch (_) { push('expo_cli', null); }
+            // installed package versions (expo, react-native, react) if available
+            try {
+                let v = null;
+                try { v = require('expo/package.json').version; } catch (_) { v = null; }
+                if (!v) {
+                    try {
+                        const pj = require(workspace + '/package.json');
+                        v = (pj && pj.dependencies && pj.dependencies.expo) || (pj && pj.devDependencies && pj.devDependencies.expo) || null;
+                    } catch (_) { v = null; }
+                }
+                push('installed_expo_version', v || null);
+            } catch (_) { push('installed_expo_version', null); }
+
+            try {
+                let v = null;
+                try { v = require('react-native/package.json').version; } catch (_) { v = null; }
+                if (!v) {
+                    try {
+                        const pj = require(workspace + '/package.json');
+                        v = (pj && pj.dependencies && pj.dependencies['react-native']) || (pj && pj.devDependencies && pj.devDependencies['react-native']) || null;
+                    } catch (_) { v = null; }
+                }
+                push('installed_react_native_version', v || null);
+            } catch (_) { push('installed_react_native_version', null); }
+
+            try {
+                let v = null;
+                try { v = require('react/package.json').version; } catch (_) { v = null; }
+                if (!v) {
+                    try {
+                        const pj = require(workspace + '/package.json');
+                        v = (pj && pj.dependencies && pj.dependencies.react) || (pj && pj.devDependencies && pj.devDependencies.react) || null;
+                    } catch (_) { v = null; }
+                }
+                push('installed_react_version', v || null);
+            } catch (_) { push('installed_react_version', null); }
 
             try {
                 const gradlew = require('fs').existsSync(require('path').join(workspace, 'android', 'gradlew'));
@@ -278,6 +314,37 @@ cli('doctor')
                 push('workspace_has_package_json', !!pkgExists);
                 push('workspace_has_app_json', !!appJsonExists);
             } catch (_) {}
+
+            // app package id (try app.json then AndroidManifest)
+            try {
+                let appPkg = null;
+                try {
+                    const fs = require('fs');
+                    const path = require('path');
+                    const appJsonPath = path.join(workspace, 'app.json');
+                    if (fs.existsSync(appJsonPath)) {
+                        const raw = fs.readFileSync(appJsonPath, 'utf8');
+                        try {
+                            const obj = JSON.parse(raw);
+                            if (obj && obj.expo && obj.expo.android && obj.expo.android.package) appPkg = obj.expo.android.package;
+                            else if (obj && obj.expo && obj.expo.package) appPkg = obj.expo.package;
+                        } catch (_) {}
+                    }
+                } catch (_) {}
+                if (!appPkg) {
+                    try {
+                        const fs = require('fs');
+                        const path = require('path');
+                        const manifest = path.join(workspace, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+                        if (fs.existsSync(manifest)) {
+                            const raw = fs.readFileSync(manifest, 'utf8');
+                            const m = raw.match(/package=\"([^\"]+)\"/);
+                            if (m) appPkg = m[1];
+                        }
+                    } catch (_) {}
+                }
+                push('app_package', appPkg || null);
+            } catch (_) { push('app_package', null); }
 
             const parsed = cli.parseArgs && cli.parseArgs();
             const asJson = (values && (values.json || values['--json'] || values['-j'])) || (parsed && (parsed.flags && (parsed.flags.json || parsed.flags.j)));
