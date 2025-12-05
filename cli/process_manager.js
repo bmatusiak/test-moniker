@@ -240,4 +240,4 @@ function plugin(imports, register) {
     register(null, { process_manager });
 }
 
-export default plugin;
+module.exports = plugin;

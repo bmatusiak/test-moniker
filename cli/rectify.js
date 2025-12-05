@@ -1,6 +1,5 @@
-import events from 'events';
-import { get } from 'http';
-// const events = require('events');
+// import events from 'events';
+const events = require('events');
 const EventEmitter = events.EventEmitter;
 
 function objHas(obj, name) { return Object.prototype.hasOwnProperty.call(obj, name); }
@@ -247,5 +246,5 @@ Rectify.build = function (config, callback) {
     }
 };
 
-// module.exports = Rectify;
-export default Rectify;
+module.exports = Rectify;
+// export default Rectify;

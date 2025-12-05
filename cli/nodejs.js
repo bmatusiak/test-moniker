@@ -1,9 +1,9 @@
 
-import fs from 'fs';
-import path from 'path';
-import child_process from 'child_process';
-import events from 'events';
-import os from 'os';
+const fs = require('fs');
+const path = require('path');
+const child_process = require('child_process');
+const events = require('events');
+const os = require('os');
 
 plugin.consumes = [];
 plugin.provides = ['nodejs'];
@@ -26,5 +26,5 @@ function plugin(imports, register) {
 }
 
 
-export default plugin;
+module.exports = plugin;
 

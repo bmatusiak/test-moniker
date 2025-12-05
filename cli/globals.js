@@ -53,4 +53,4 @@ function plugin(imports, register) {
     register(null, { globals });
 }
 
-export default plugin;
+module.exports = plugin;

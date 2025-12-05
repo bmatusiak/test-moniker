@@ -379,4 +379,4 @@ function plugin(imports, register) {
     register(null, { cli });
 }
 
-export default plugin;
+module.exports = plugin;

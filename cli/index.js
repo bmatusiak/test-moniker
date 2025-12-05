@@ -1,16 +1,16 @@
-const rectify = require('./rectify.mjs');
+const rectify = require('./rectify.js');
 
-const cliPlugin = require('./cli.mjs');
-const commandsPlugin = require('./commands.mjs');
-const configPlugin = require('./config.mjs');
-const crashPlugin = require('./crash.mjs');
-const devicePlugin = require('./device_manager.mjs');
-const doctorPlugin = require('./doctor.mjs');
-const globalsPlugin = require('./globals.mjs');
-const logPlugin = require('./log.mjs');
-const nodejsPlugin = require('./nodejs.mjs');
-const processPlugin = require('./process_manager.mjs');
-const workspacePlugin = require('./workspace.mjs');
+const cliPlugin = require('./cli.js');
+const commandsPlugin = require('./commands.js');
+const configPlugin = require('./config.js');
+const crashPlugin = require('./crash.js');
+const devicePlugin = require('./device_manager.js');
+const doctorPlugin = require('./doctor.js');
+const globalsPlugin = require('./globals.js');
+const logPlugin = require('./log.js');
+const nodejsPlugin = require('./nodejs.js');
+const processPlugin = require('./process_manager.js');
+const workspacePlugin = require('./workspace.js');
 
 (async function () {
 

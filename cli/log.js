@@ -149,4 +149,4 @@ function plugin(imports, register) {
     register(null, { Log });
 }
 
-export default plugin;
+module.exports = plugin;

@@ -269,4 +269,4 @@ function plugin(imports, register) {
 }
 
 
-export default plugin;
+module.exports = plugin;
