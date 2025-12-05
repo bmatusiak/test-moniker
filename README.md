@@ -22,6 +22,11 @@ Common flags
 - `--json-log <path>` / `-j <path>`: write line-delimited JSON log entries to the given path (relative to workspace).
 - `--force` / `-f`: bypass workspace validation (use with caution).
 
+Pre-run flags
+- The CLI supports marking handlers as pre-run flags using the handler chain method `.flags({ pre: true })`.
+- Pre-run flagged handlers run before normal actions; use this to set up global runtime state, load configs, or instantiate loggers that other actions rely on.
+- Example: `cli('--json-log').flags({pre:true}).do(() => { /* enable json logging before actions */ })`
+
 Environment
 - When the CLI resolves a workspace it sets `TEST_MONIKER_WORKSPACE` in the process environment. Handlers also receive a `values.workspace` property.
 

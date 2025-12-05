@@ -218,6 +218,18 @@ function test_internal_registered_flags_tracking() {
     assert(cli._registeredFlags && cli._registeredFlags.has('track'), '_registeredFlags contains canonical name after run');
 }
 
+function test_pre_run_flag_executes_before_actions() {
+    const cli = reloadCli(['--preflag','--after']);
+    reset(cli);
+    let preRan = false;
+    let seenInAction = false;
+    cli('--preflag').flags({ pre: true }).do(() => { preRan = true; });
+    cli('after').do(() => { seenInAction = preRan; });
+    cli.run();
+    assert(preRan === true, 'pre-run flag handler executed');
+    assert(seenInAction === true, 'normal action observed pre-run changes');
+}
+
 function test_non_numeric_but_digit_like_strings() {
     const cli = reloadCli(['--id','007','--code','A1']);
     const parsed = cli.parseArgs();
@@ -273,6 +285,7 @@ function runAll() {
     test_multiple_alias_keys_for_same_canonical();
     test_plain_positional_and_flag_duplicate();
     test_internal_registered_flags_tracking();
+    test_pre_run_flag_executes_before_actions();
     test_non_numeric_but_digit_like_strings();
     test_flag_name_starting_with_number();
     test_help();

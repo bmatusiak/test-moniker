@@ -60,6 +60,7 @@ let _LOG_PATH_OVERRIDE = null;
 // Global runtime flags
 let _VERBOSE = false;
 let _DRY_RUN = false;
+let _LOG_ENABLED = false;
 // CI, force, json-log, config flags
 let CI_MODE = false;
 let FORCE = false;
@@ -124,7 +125,8 @@ cli('--silent')
 // verbosity and dry-run
 cli('--verbose','-V')
     .info('Enable verbose output')
-    .do(() => { VERBOSE = true; Log.enabled = true; });
+    .flags({ pre: true })
+    .do(() => { _VERBOSE = true; _LOG_ENABLED = true; });
 
 cli('--dry-run','-n')
     .info('Show actions without executing')
@@ -225,6 +227,7 @@ if (typeof require !== 'undefined' && require.main === module) {
                 Log = _makeLogManager(workspace)('moniker-log', _LOG_JSON);
                 if (_LOG_PATH_OVERRIDE) Log.path = _LOG_PATH_OVERRIDE;
                 if (_SILENT) Log.silent = true;
+                if (_LOG_ENABLED) Log.enabled = true;
                 if (CI_MODE) {
                     Log.enabled = true;
                     Log.silent = true;
