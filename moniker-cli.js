@@ -457,9 +457,27 @@ cli('--start-dev-server','-s')
                         //     });
                     },
                     () => {// opening
-                        logcat = adbLogCat(//done
+                        logcat = adbLogCat(//done, crashDetect
                             () => {//done
                                 metro.stop();
+                            },
+                            (serial, line) => {//crashDetect
+                                console.log('[CRASH DETECTED] on device', serial + ':', line);
+                                // capture bugreport on crash keywords
+                                try {
+                                    if (_CAPTURE_ON_CRASH) {
+                                        try {
+                                            const ts = Date.now();
+                                            const outPath = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
+                                            device_manager.captureBugreport(outPath, serial);
+                                            try { if (Log && Log.append) Log.append('[DEVICE] Captured bugreport: ' + outPath); } catch (_) {}
+                            
+                                        } catch (_) {}
+                                    }else {
+                                        // metro.stop();
+                                        logcat.stop();
+                                    }
+                                } catch (_) {}
                             });
                     },
                     ()=> {// failed
@@ -636,7 +654,7 @@ function buildAndInstall(ready, close, intalled, open, failed) {
     return builder;
 }
 
-function adbLogCat(done) {
+function adbLogCat(done, crashDetect) {
     // New, simpler adb log collector per-device.
     const fs = require('fs');
     const path = require('path');
@@ -730,13 +748,9 @@ function adbLogCat(done) {
                 logLine(serial, line);
                 // capture bugreport on crash keywords
                 try {
-                    if (_CAPTURE_ON_CRASH && (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal'))) {
-                        try {
-                            const ts = Date.now();
-                            const outPath = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
-                            device_manager.captureBugreport(outPath, serial);
-                            try { if (Log && Log.append) Log.append('[DEVICE] Captured bugreport: ' + outPath); } catch (_) {}
-                        } catch (_) {}
+                    if (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal')) {
+                        //stop log cat, no longer needed
+                        crashDetect && crashDetect(serial, line);
                     }
                 } catch (_) {}
             }
