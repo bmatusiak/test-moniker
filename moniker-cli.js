@@ -469,7 +469,7 @@ cli('--start-dev-server','-s')
                                 console.log('[CRASH DETECTED] on device', serial + ':', line);
                                 //kill app package id before running bugreport
                                 try {
-                                    const appPkg = '';// compute app package id (try app.json then AndroidManifest)
+                                    const appPkg = '';// compute app package id base on current logic from doctor
                                     if (appPkg) {
                                         console.log('[CRASH HANDLER] Stopping app', appPkg, 'on device', serial + '...');
                                         const stopRes = device_manager.safeExec('adb', ['-s', serial, 'shell', 'am', 'force-stop', appPkg]);
