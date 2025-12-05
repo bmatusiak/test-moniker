@@ -18,7 +18,29 @@ import processPlugin from './process.js';
         doctorPlugin,
         logPlugin,
         processPlugin
-    ];
+    ].concat([
+        (()=>{
+            // globals plugin to satisfy app to contain 'globals' service to hold global state
+            /*
+                // in another plugin
+                plugin.consumes = ['globals'];
+                plugin.provides = ['someService'];
+                function plugin( imports, register) {
+                    const { globals } = imports;
+                    globals.someValue = 42;
+                    register(null, { someService: { /* ... * / } });
+                }
+                // if you need gloabls variable set beforehand, consume the plugins that initializes/sets it first, so this is loaded after
+            */
+            plugin.consumes = [];
+            plugin.provides = ['globals'];
+            function plugin( imports, register) {
+                register(null, { globals: {} });
+            }
+            return plugin;
+        })()
+    ]);  
+
 
     var app = rectify.build(config);
 
