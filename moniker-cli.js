@@ -47,39 +47,23 @@ try {
     process.env.TEST_MONIKER_WORKSPACE = workspace;
 } catch (_) {}
 
-const Log = {};
-Log.path = 'logs/moniker-log-' + Date.now() + '.txt';
-Log.data = [];
-Log.append = function() {
-    if (!Log.enabled) return;
-    try {
-        var fs = require('fs');
-        var path = require('path');
-        // ensure directory exists
-        var dir = path.dirname(workspace + '/' + Log.path);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        // prefix with ISO timestamp for easier searching
-        const args = Array.from(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
-        const ts = new Date().toISOString();
-        fs.appendFileSync(workspace + '/' + Log.path, ts + ' ' + args.join('') + '\n', 'utf8');
-        // also write JSON log entry when requested
-        try {
-            if (JSON_LOG_PATH) {
-                const jsonLine = JSON.stringify({ ts: ts, msg: args.join('') });
-                fs.appendFileSync(JSON_LOG_PATH, jsonLine + '\n', 'utf8');
-            }
-        } catch (_) {}
-    } catch (_) {
-        // swallow logging errors to avoid crashing CLI
-    }
-};
-Log.enabled = false;
+// logging manager (instantiated after workspace/config is determined)
+const _makeLogManager = require('./libs/log_manager');
+let Log = null;
+let _LOG_JSON = false;
+
+// intermediate values set by pre-run flag handlers
+let _CONFIG_PATH = null;
+let _SILENT = false;
+let _LOG_PATH_OVERRIDE = null;
 
 // Global runtime flags
 let _VERBOSE = false;
 let _DRY_RUN = false;
+// CI, force, json-log, config flags
+let CI_MODE = false;
+let FORCE = false;
+let _CONFIG = null;
 
 const process_manager = require('./libs/process_manager');
 
@@ -100,37 +84,41 @@ process.on('SIGTERM', () => {
 
 cli('--log')
     .info('Log Output to moniker-log-' + Date.now() + '.txt')
+    .flags({ pre: true })
     .do((values) => {
-        Log.path = typeof values.log === 'string' ? values.log : Log.path;
-        Log.enabled = true;
+        _LOG_PATH_OVERRIDE = typeof values.log === 'string' ? values.log : _LOG_PATH_OVERRIDE;
     });
-
-// CI, force, json-log, config flags
-let CI_MODE = false;
-let FORCE = false;
-let JSON_LOG_PATH = null;
-let _CONFIG = null;
 
 cli('--ci')
     .info('Run in CI mode (quiet, write logs, fail-fast)')
+    .flags({ pre: true })
     .do(() => { CI_MODE = true; });
 
 cli('--force','-f')
     .info('Force actions even if workspace validation fails')
+    .flags({ pre: true })
     .do(() => { FORCE = true; });
 
 cli('--json-log','-j')
-    .info('Write machine-readable JSON log to given path')
-    .do((values) => { JSON_LOG_PATH = values && (values['json-log'] || values.j) ? String(values['json-log'] || values.j) : JSON_LOG_PATH; });
+    .info('Write machine-readable JSON log (use JSON log format)')
+    .flags({ pre: true })
+    .do(() => { _LOG_JSON = true; });
 
 cli('--config')
     .info('Path to moniker config file (relative to workspace)')
-    .do(() => { /* handled during pre-run */ });
+    .flags({ pre: true })
+    .do((values) => {
+        try {
+            const v = values && (values.config || values['--config']);
+            if (v) _CONFIG_PATH = String(v);
+        } catch (_) {}
+    });
 
 cli('--silent')
     .info('Log Output to moniker-logs.txt')
+    .flags({ pre: true })
     .do(() => {
-        Log.silent = true;
+        _SILENT = true;
     });
 
 // verbosity and dry-run
@@ -145,6 +133,7 @@ cli('--dry-run','-n')
 // register workspace flag so cli doesn't warn about unknown flags
 cli('--workspace','-w')
     .info('Override workspace path')
+    .flags({ pre: true })
     .do((values) => {
         try {
             const path = require('path');
@@ -163,7 +152,7 @@ cli('--print-workspace','-p')
         console.log('workspace (from handler values):', values && values.workspace ? values.workspace : process.env.TEST_MONIKER_WORKSPACE);
     });
 
-cli('--start-dev-server','-s','start-dev-server')
+cli('--start-dev-server','-s')
     .info('Start the metro development server')
     .do(() => {
         let metro, _builder, logcat;
@@ -200,79 +189,67 @@ cli('--start-dev-server','-s','start-dev-server')
 
 // Only auto-run when executed directly
 if (typeof require !== 'undefined' && require.main === module) {
-    // inject the resolved workspace into the values object for any registered action
-    if (cli._actions && Array.isArray(cli._actions)) {
-        for (const actionDesc of cli._actions) {
-            try {
-                if (!actionDesc.values) actionDesc.values = {};
-                actionDesc.values.workspace = workspace;
-            } catch (_) {}
-        }
-    }
-    // pre-run: parse raw flags to configure CI/force/json-log and load config
-    try {
-        const parsed = cli.parseArgs();
-        CI_MODE = !!(parsed.flags && parsed.flags.ci);
-        FORCE = !!(parsed.flags && (parsed.flags.force || parsed.flags.f));
-        JSON_LOG_PATH = parsed.flags && (parsed.flags['json-log'] || parsed.flags.j) ? String(parsed.flags['json-log'] || parsed.flags.j) : JSON_LOG_PATH;
-        // if config path provided, resolve and load
-        const cfgPath = parsed.flags && parsed.flags.config ? String(parsed.flags.config) : null;
-        const fs = require('fs');
-        const path = require('path');
-        // try workspace-level config files
-        const tryConfigs = [];
-        if (cfgPath) tryConfigs.push(path.resolve(process.cwd(), cfgPath));
-        tryConfigs.push(path.join(workspace, 'moniker.config.json'));
-        tryConfigs.push(path.join(workspace, '.monikerrc'));
-        for (const p of tryConfigs) {
-            try {
-                if (p && fs.existsSync(p)) {
-                    const raw = fs.readFileSync(p, 'utf8');
-                    _CONFIG = JSON.parse(raw);
-                    break;
-                }
-            } catch (_) {}
-        }
-
-        // workspace validation: require app.json or package.json unless forced
-        if (!FORCE) {
-            const path = require('path');
+    // Pre-run hook: run after pre-flag handlers executed but before normal actions
+    cli._preRunHook = function() {
+        try {
             const fs = require('fs');
-            const okWorkspace = fs.existsSync(path.join(workspace, 'app.json')) || fs.existsSync(path.join(workspace, 'package.json'));
-            if (!okWorkspace) {
-                console.error('ERROR: workspace does not contain app.json or package.json:', workspace);
-                console.error('Use --force to override.');
-                process.exit(1);
+            const path = require('path');
+
+            // Load config file (if provided or available in workspace)
+            const tryConfigs = [];
+            if (_CONFIG_PATH) tryConfigs.push(path.resolve(process.cwd(), _CONFIG_PATH));
+            tryConfigs.push(path.join(workspace, 'moniker.config.json'));
+            tryConfigs.push(path.join(workspace, '.monikerrc'));
+            for (const p of tryConfigs) {
+                try {
+                    if (p && fs.existsSync(p)) {
+                        const raw = fs.readFileSync(p, 'utf8');
+                        _CONFIG = JSON.parse(raw);
+                        break;
+                    }
+                } catch (_) {}
             }
-        }
 
-        // CI defaults
-        if (CI_MODE) {
-            Log.enabled = true;
-            Log.silent = true;
-        }
+            // workspace validation: require app.json or package.json unless forced
+            if (!FORCE) {
+                const okWorkspace = fs.existsSync(path.join(workspace, 'app.json')) || fs.existsSync(path.join(workspace, 'package.json'));
+                if (!okWorkspace) {
+                    console.error('ERROR: workspace does not contain app.json or package.json:', workspace);
+                    console.error('Use --force to override.');
+                    process.exit(1);
+                }
+            }
 
-        // json log setup
-        if (JSON_LOG_PATH) {
+            // instantiate logger (plain or JSON mode) after workspace is known
             try {
-                const path = require('path');
-                JSON_LOG_PATH = path.resolve(workspace, JSON_LOG_PATH);
-                const dir = require('path').dirname(JSON_LOG_PATH);
-                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-                // append a header line
-                fs.appendFileSync(JSON_LOG_PATH, JSON.stringify({ event: 'start', ts: new Date().toISOString() }) + '\n');
-            } catch (_) { JSON_LOG_PATH = null; }
+                Log = _makeLogManager(workspace)('moniker-log', _LOG_JSON);
+                if (_LOG_PATH_OVERRIDE) Log.path = _LOG_PATH_OVERRIDE;
+                if (_SILENT) Log.silent = true;
+                if (CI_MODE) {
+                    Log.enabled = true;
+                    Log.silent = true;
+                }
+            } catch (_) { Log = null; }
+
+            // inject the resolved workspace into the values object for any registered action
+            if (cli._actions && Array.isArray(cli._actions)) {
+                for (const actionDesc of cli._actions) {
+                    try {
+                        if (!actionDesc.values) actionDesc.values = {};
+                        actionDesc.values.workspace = workspace;
+                    } catch (_) {}
+                }
+            }
+        } catch (e) {
+            try { console.error('Pre-run hook error:', e); } catch (_) {}
         }
-    } catch (_) {}
+    };
 
     const ok = cli.run();
     if(!ok) {
         console.log('No actions run.');
     }
 }
-
-// export the cli function for requiring
-module.exports = cli;
 
 function startMeroServer(ready, close, done, error) {
     const metro = process_manager('metro');
@@ -309,7 +286,6 @@ function startMeroServer(ready, close, done, error) {
     metro.start();
     return metro;
 }
-
 
 function buildAndInstall(ready, close, intalled, open, failed) {
     const builder = process_manager('builder');
@@ -434,3 +410,6 @@ function adbLogCat(done) {
 
     return logcat;
 }
+
+// export the cli function for requiring
+module.exports = cli;

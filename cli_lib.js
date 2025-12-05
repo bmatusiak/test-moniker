@@ -144,8 +144,14 @@ function cli(...callArgs) {
             cli._info.push(cmd + '\t\t' + text);
             return handler;
         },
+        // mark this handler as a flag-style pre-run handler
+        flags: (opts) => {
+            handler._flags = opts || { pre: true };
+            return handler;
+        },
         do: (action) => {
             if (!cli._actions) cli._actions = [];
+            if (!cli._flagActions) cli._flagActions = [];
             if (thisCli) {
                 // deep-clone values to decouple future modifications
                 let cloned;
@@ -156,7 +162,12 @@ function cli(...callArgs) {
                     cloned = Object.assign({}, values);
                     cloned._raw = Object.assign({}, values._raw || {});
                 }
-                cli._actions.push({ fn: action, values: cloned });
+                // if marked as pre-run flag handler, add to _flagActions
+                if (handler._flags && handler._flags.pre) {
+                    cli._flagActions.push({ fn: action, values: cloned });
+                } else {
+                    cli._actions.push({ fn: action, values: cloned });
+                }
             }
             return handler;
         }
@@ -286,6 +297,29 @@ cli.run = function runActions() {
     const aliasKeys = new Set(Object.keys(cli._aliases || {}));
     const aliasVals = new Set(Object.values(cli._aliases || {}));
     const aliasSet = new Set([...aliasKeys, ...aliasVals]);
+
+    // run pre-registered flag handlers first (if any)
+    if (cli._flagActions && Array.isArray(cli._flagActions)) {
+        for (const actionDesc of cli._flagActions) {
+            const act = actionDesc && actionDesc.fn;
+            const values = actionDesc && actionDesc.values;
+            if (act && typeof act === 'function') {
+                try {
+                    act(values);
+                    actionsRun = true;
+                } catch (e) {
+                    console.error('Error running flag action:', e);
+                }
+            }
+        }
+    }
+
+    // allow a pre-run hook (e.g., to inject mutated globals into remaining action values)
+    try {
+        if (typeof cli._preRunHook === 'function') cli._preRunHook();
+    } catch (e) {
+        console.error('Error in pre-run hook:', e);
+    }
 
     const unknown = Object.keys(lastParsed.flags).filter(k => !registered.has(k) && !aliasSet.has(k));
     if (unknown.length > 0) {
