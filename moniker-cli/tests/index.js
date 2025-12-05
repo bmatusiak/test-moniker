@@ -1,4 +1,3 @@
-const EventEmitter = require('events').EventEmitter;
 const rectify = require('../rectify.js');
 
 const cliPlugin = require('../cli.js');
@@ -14,9 +13,9 @@ const { get } = require('http');
 // const processPlugin = require('../process_manager.js');
 // const workspacePlugin = require('../workspace.js');
 
-(async function () {
+const app = { on: () => { }, emit: () => { } };//mock app
 
-    var app = new EventEmitter();
+(async function () {
     var nodejs = loadPlugin(nodejsPlugin, 'nodejs');
 
     function testLib() {
@@ -51,10 +50,12 @@ const { get } = require('http');
     function startTest(name, plugin, cb) {
         var tl = testLib();
         console.log('Starting test for plugin:', name)
+        console.log('---------');
         plugin.test(tl.assert, (name) => loadPlugin(plugin, name));
         console.log('---');
         console.log('Passes:', tl.passes, 'Failures:', tl.failures);
         console.log('Finished test for plugin:', name);
+        console.log('-------------------------');
     }
 
     startTest('cli', cliPlugin);
