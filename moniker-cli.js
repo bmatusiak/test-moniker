@@ -688,12 +688,12 @@ function adbLogCat(done) {
 
         const name = 'logcat-' + serial;
         const proc = process_manager(name);
+        // Start unfiltered logcat (with timestamps) so we don't miss native crash signals.
+        // If pid is available prefer pid filtering to reduce noise; otherwise capture all tags.
         const args = ['-s', serial, 'logcat', '-v', 'time'];
-        // filter to reduce noise but keep RN tags; if pid available use it
         if (pid) {
             args.push('--pid', pid);
         }
-        args.push('*:S', 'ReactNativeJS:V', 'ReactNative:V', 'RCTLog:V', 'Hermes:V');
 
         proc.setup('adb', args, { stdio: 'pipe' });
 
