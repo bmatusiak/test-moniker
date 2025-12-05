@@ -637,11 +637,13 @@ function buildAndInstall(ready, close, intalled, open, failed) {
 }
 
 function adbLogCat(done) {
-    // Determine app package (try app.json, then AndroidManifest)
+    // New, simpler adb log collector per-device.
+    const fs = require('fs');
+    const path = require('path');
+
+    // resolve app package id (app.json or AndroidManifest)
     let appPackage = null;
     try {
-        const fs = require('fs');
-        const path = require('path');
         const appJsonPath = path.join(workspace, 'app.json');
         if (fs.existsSync(appJsonPath)) {
             const raw = fs.readFileSync(appJsonPath, 'utf8');
@@ -661,93 +663,89 @@ function adbLogCat(done) {
         }
     } catch (_) { appPackage = null; }
 
-    // Tags to fall back to when pid filtering isn't available
-    let regexTags = [];
-    if (appPackage) regexTags.push(appPackage);
-    regexTags = regexTags.concat(['ReactNativeJS','ReactNative','RCTLog','Hermes','AndroidRuntime','FATAL EXCEPTION','SIGSEGV','SIGABRT','ANR','Fatal signal','native crash','crash','moniker']);
-    const regexPattern = regexTags.join('|');
+    const devices = Array.isArray(device_manager.listDevices && device_manager.listDevices()) ? device_manager.listDevices() : (device_manager.listDevices() || []);
+    const collectors = [];
+    let closed = 0;
 
-    const devices = device_manager.listDevices();
-    const activeLogcats = [];
-    let closedCount = 0;
+    function logLine(serial, rawLine) {
+        // Emit raw logcat output exactly as produced by adb (no reformatting)
+        try { out(rawLine); } catch (_) { console.log(rawLine); }
+        try { if (Log && Log.append) Log.append(rawLine); } catch (_) {}
+    }
 
-    function makeLoggerFor(serial) {
-        let buf = '';
-        return function(data) {
-            const chunk = data.toString();
-            buf += chunk;
-            const lines = buf.split(/\r?\n/);
-            buf = lines.pop();
-            for (let i = 0; i < lines.length; i++) {
-                const line = `[ADB:${serial}] ` + lines[i];
-                out(line);
-                try { Log.append(line); } catch (_) {}
+    function makeCollector(serial) {
+        // clear logcat buffer first
+        try { device_manager.safeExec('adb', ['-s', serial, 'logcat', '-c']); } catch (_) {}
+
+        // try pidof, but tolerate failures
+        let pid = null;
+        if (appPackage) {
+            try {
+                const r = device_manager.safeExec('adb', ['-s', serial, 'shell', 'pidof', appPackage]);
+                if (r && r.ok && r.stdout) pid = (r.stdout || '').trim().split(/\s+/)[0] || null;
+            } catch (_) { pid = null; }
+        }
+
+        const name = 'logcat-' + serial;
+        const proc = process_manager(name);
+        const args = ['-s', serial, 'logcat', '-v', 'time'];
+        // filter to reduce noise but keep RN tags; if pid available use it
+        if (pid) {
+            args.push('--pid', pid);
+        }
+        args.push('*:S', 'ReactNativeJS:V', 'ReactNative:V', 'RCTLog:V', 'Hermes:V');
+
+        proc.setup('adb', args, { stdio: 'pipe' });
+
+        let buffer = '';
+        const onData = (data) => {
+            buffer += data.toString();
+            const parts = buffer.split(/\r?\n/);
+            buffer = parts.pop();
+            for (const line of parts) {
+                if (!line) continue;
+                logLine(serial, line);
+                // capture bugreport on crash keywords
                 try {
                     if (_CAPTURE_ON_CRASH && (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal'))) {
                         try {
                             const ts = Date.now();
                             const outPath = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
                             device_manager.captureBugreport(outPath, serial);
-                            try { Log.append('[DEVICE] Captured bugreport: ' + outPath); } catch (_) {}
+                            try { if (Log && Log.append) Log.append('[DEVICE] Captured bugreport: ' + outPath); } catch (_) {}
                         } catch (_) {}
                     }
                 } catch (_) {}
             }
         };
+
+        proc.on('stdout', onData);
+        proc.on('stderr', onData);
+        proc.on('close', (code) => {
+            out(`adb logcat(${serial}) exited with code ${code}`);
+            closed++;
+            if (closed === collectors.length && done) done(code);
+        });
+
+        proc.start();
+        return proc;
     }
 
+    // start collectors for each device
     for (const d of devices) {
         const serial = d && d.serial;
         if (!serial) continue;
-        const name = 'logcat-' + serial;
-        const lc = process_manager(name);
-        // try to find pid for the package on this device
-        let pid = null;
-        try {
-            if (appPackage) {
-                const r = device_manager.safeExec('adb', ['-s', serial, 'shell', 'pidof', appPackage]);
-                if (r && r.ok && r.stdout) {
-                    const p = (r.stdout || '').trim().split(/\s+/)[0];
-                    if (p) pid = p;
-                }
-            }
-        } catch (_) { pid = null; }
-
-        // clear device logcat buffer before starting collection
-        try {
-            try { device_manager.safeExec('adb', ['-s', serial, 'logcat', '-c']); } catch (_) { /* ignore */ }
-            try { Log.append('[DEVICE] Cleared logcat on ' + serial); } catch (_) {}
-        } catch (_) {}
-
-        if (pid) {
-            lc.setup('adb', ['-s', serial, 'logcat', '--pid', pid], { stdio: 'pipe' });
-        } else {
-            lc.setup('adb', ['-s', serial, 'logcat', '--regex', regexPattern], { stdio: 'pipe' });
-        }
-
-        lc.on('stdout', makeLoggerFor(serial));
-        lc.on('stderr', makeLoggerFor(serial));
-
-        lc.on('close', (code) => {
-            out(`adb logcat(${serial}) exited with code ${code}`);
-            closedCount++;
-            if (closedCount === activeLogcats.length && done) done(code);
-        });
-
-        activeLogcats.push(lc);
-        lc.start();
+        const c = makeCollector(serial);
+        collectors.push(c);
     }
 
-    // wrapper to stop all logcats
-    const wrapper = {
+    return {
         stop() {
-            for (const p of activeLogcats) {
+            for (const p of collectors) {
                 try { p.stop(); } catch (_) {}
             }
         }
     };
-
-    return wrapper;
 }
 
 // export the cli function for requiring
