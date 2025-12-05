@@ -597,17 +597,6 @@ function buildAndInstall(ready, close, intalled, open, failed) {
             const line = '[BUILD] ' + lines[i];
             if(!Log.silent) out(line);
             Log.append(line);
-            // capture bugreport when crash keywords seen
-            try {
-                if (_CAPTURE_ON_CRASH && (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal'))) {
-                    try {
-                        const ts = Date.now();
-                        const out = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
-                        device_manager.captureBugreport(out);
-                        Log.append('[DEVICE] Captured bugreport: ' + out);
-                    } catch (_) {}
-                }
-            } catch (_) {}
         }
     }
 
@@ -643,89 +632,111 @@ function buildAndInstall(ready, close, intalled, open, failed) {
 }
 
 function adbLogCat(done) {
-    var worksapceAppJSON = require(workspace + '/app.json');
-    var appPckage = worksapceAppJSON.expo.android.package;
-    // Listen for the app package, common React Native tags, and crash/runtime keywords
-    let regexTags = [].concat(
-        [appPckage],// app package name
-        [ 'ReactNativeJS', 'ReactNative', 'RCTLog', 'Hermes'],// React Native common tags
-        ['AndroidRuntime', 'FATAL EXCEPTION', 'SIGSEGV', 'SIGABRT', 'ANR', 'Fatal signal', 'native crash', 'crash'],// crash/runtime keywords
-        [ 'moniker' ], // moniker tags
-    );
-    regexTags = regexTags.join('|');
-    const logcat = process_manager('logcat');
-    logcat.setup('adb', ['logcat', '--regex', regexTags], { stdio: 'pipe' });
-    logcat.start();
-    
-    let builderBuf = '';
-    function logger(data){
-        const chunk = data.toString();
-        builderBuf += chunk;
-        const lines = builderBuf.split(/\r?\n/);
-        builderBuf = lines.pop();
-        for (let i = 0; i < lines.length; i++) {
-            const line = '[ADB] ' + lines[i];
-            // if (line.includes('ReactNativeJS') || line.includes('ReactNative') || line.includes('RCTLog') || line.includes('Hermes')) 
-            out(line);
-            Log.append(line);
-            // capture bugreport when crash keywords seen
+    // Determine app package (try app.json, then AndroidManifest)
+    let appPackage = null;
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const appJsonPath = path.join(workspace, 'app.json');
+        if (fs.existsSync(appJsonPath)) {
+            const raw = fs.readFileSync(appJsonPath, 'utf8');
             try {
-                if (_CAPTURE_ON_CRASH && (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal'))) {
-                    try {
-                        const ts = Date.now();
-                        const out = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
-                        device_manager.captureBugreport(out);
-                        Log.append('[DEVICE] Captured bugreport: ' + out);
-                    } catch (_) {}
-                }
+                const obj = JSON.parse(raw);
+                if (obj && obj.expo && obj.expo.android && obj.expo.android.package) appPackage = obj.expo.android.package;
+                else if (obj && obj.expo && obj.expo.package) appPackage = obj.expo.package;
             } catch (_) {}
         }
-    }
-
-    logcat.on('stdout', (data) => {
-        const skipArray = [
-            'SurfaceFlinger:',
-            'BufferQueueProducer:',
-            'BufferQueueConsumer:',
-            'Choreographer:',
-            'OpenGLRenderer:',
-            'DisplayEventReceiver:',
-            'ActivityManager:',
-            'PowerManagerService:',
-            'WindowManager:',
-            'InputMethodManagerService:',
-            'AudioFlinger:',
-            'Gralloc4:',
-            'Adreno-EGL:',
-            'Adreno-ES20:',
-            'Adreno-ES30:',
-            'EGL_emulation:',
-            'libEGL:',
-            'libGLESv2:',
-            'GLES2Decoder:',
-            'OpenGLRenderer:',
-            'SGM:GameManager'
-        ];
-        let skip = false;
-        for(let i=0; i<skipArray.length; i++) {
-            if(data.toString().includes(skipArray[i])) {
-                skip = true;
-                break;
+        if (!appPackage) {
+            const manifest = path.join(workspace, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+            if (fs.existsSync(manifest)) {
+                const raw = fs.readFileSync(manifest, 'utf8');
+                const m = raw.match(/package=\"([^\"]+)\"/);
+                if (m) appPackage = m[1];
             }
         }
-        if (!skip) {
-            try {
-                logger(data);
-            } catch (_) {err(_);} 
+    } catch (_) { appPackage = null; }
+
+    // Tags to fall back to when pid filtering isn't available
+    let regexTags = [];
+    if (appPackage) regexTags.push(appPackage);
+    regexTags = regexTags.concat(['ReactNativeJS','ReactNative','RCTLog','Hermes','AndroidRuntime','FATAL EXCEPTION','SIGSEGV','SIGABRT','ANR','Fatal signal','native crash','crash','moniker']);
+    const regexPattern = regexTags.join('|');
+
+    const devices = device_manager.listDevices();
+    const activeLogcats = [];
+    let closedCount = 0;
+
+    function makeLoggerFor(serial) {
+        let buf = '';
+        return function(data) {
+            const chunk = data.toString();
+            buf += chunk;
+            const lines = buf.split(/\r?\n/);
+            buf = lines.pop();
+            for (let i = 0; i < lines.length; i++) {
+                const line = `[ADB:${serial}] ` + lines[i];
+                out(line);
+                try { Log.append(line); } catch (_) {}
+                try {
+                    if (_CAPTURE_ON_CRASH && (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal'))) {
+                        try {
+                            const ts = Date.now();
+                            const outPath = workspace + '/moniker-logs/bugreport-' + ts + '.txt';
+                            device_manager.captureBugreport(outPath, serial);
+                            try { Log.append('[DEVICE] Captured bugreport: ' + outPath); } catch (_) {}
+                        } catch (_) {}
+                    }
+                } catch (_) {}
+            }
+        };
+    }
+
+    for (const d of devices) {
+        const serial = d && d.serial;
+        if (!serial) continue;
+        const name = 'logcat-' + serial;
+        const lc = process_manager(name);
+        // try to find pid for the package on this device
+        let pid = null;
+        try {
+            if (appPackage) {
+                const r = device_manager.safeExec('adb', ['-s', serial, 'shell', 'pidof', appPackage]);
+                if (r && r.ok && r.stdout) {
+                    const p = (r.stdout || '').trim().split(/\s+/)[0];
+                    if (p) pid = p;
+                }
+            }
+        } catch (_) { pid = null; }
+
+        if (pid) {
+            lc.setup('adb', ['-s', serial, 'logcat', '--pid', pid], { stdio: 'pipe' });
+        } else {
+            lc.setup('adb', ['-s', serial, 'logcat', '--regex', regexPattern], { stdio: 'pipe' });
         }
-    });
 
-    logcat.on('close', (code) => {
-        out(`adb logcat exited with code ${code}`);
-        if(done) done(code);
-    });
+        lc.on('stdout', makeLoggerFor(serial));
+        lc.on('stderr', makeLoggerFor(serial));
 
-    return logcat;
+        lc.on('close', (code) => {
+            out(`adb logcat(${serial}) exited with code ${code}`);
+            closedCount++;
+            if (closedCount === activeLogcats.length && done) done(code);
+        });
+
+        activeLogcats.push(lc);
+        lc.start();
+    }
+
+    // wrapper to stop all logcats
+    const wrapper = {
+        stop() {
+            for (const p of activeLogcats) {
+                try { p.stop(); } catch (_) {}
+            }
+        }
+    };
+
+    return wrapper;
 }
 
 // export the cli function for requiring
