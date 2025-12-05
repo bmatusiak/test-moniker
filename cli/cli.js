@@ -1,7 +1,10 @@
-plugin.consumes = [];
+plugin.consumes = ['nodejs', 'app'];
 plugin.provides = ['cli'];
 
-function plugin( imports, register) {
+function plugin(imports, register) {
+    const { nodejs, app } = imports;
+    const { events: EventEmitter } = nodejs;
+    var cliEmitter = new EventEmitter();
 
     function cli(...callArgs) {
         callArgs = Array.from(callArgs);
@@ -76,7 +79,7 @@ function plugin( imports, register) {
                 else values['--' + rawName] = val;
                 cli._registeredFlags.add(canonical);
             } else {
-            // fallback: record under the raw name
+                // fallback: record under the raw name
                 values[rawName] = val;
                 values._raw[rawName] = val;
                 cli._registeredFlags.add(rawName);
@@ -140,7 +143,7 @@ function plugin( imports, register) {
         const handler = {
             info: (text) => {
                 let cmd = callArgs.join(',');
-                if(cmd.length < 20) {//padd to 20 chars
+                if (cmd.length < 20) {//padd to 20 chars
                     cmd = cmd.padEnd(20);
                 }
                 cli._info.push(cmd + '\t\t' + text);
@@ -155,12 +158,12 @@ function plugin( imports, register) {
                 if (!cli._actions) cli._actions = [];
                 if (!cli._flagActions) cli._flagActions = [];
                 if (thisCli) {
-                // deep-clone values to decouple future modifications
+                    // deep-clone values to decouple future modifications
                     let cloned;
                     try {
                         cloned = JSON.parse(JSON.stringify(values));
                     } catch (_e) {
-                    // fallback to shallow clone
+                        // fallback to shallow clone
                         cloned = Object.assign({}, values);
                         cloned._raw = Object.assign({}, values._raw || {});
                     }
@@ -177,6 +180,10 @@ function plugin( imports, register) {
 
         return handler;
     }
+    cli.on = cliEmitter.on.bind(cliEmitter);
+    cli.once = cliEmitter.once.bind(cliEmitter);
+    cli.emit = cliEmitter.emit.bind(cliEmitter);
+    cli.off = cliEmitter.off.bind(cliEmitter);
 
     function parseArgs() {
         const raw = process.argv.slice(2);
@@ -234,7 +241,7 @@ function plugin( imports, register) {
                     }
                 }
             } else if (a.startsWith('-') && a.length > 1) {
-            // handle -k=val
+                // handle -k=val
                 const eq = a.indexOf('=');
                 if (eq !== -1 && a.length >= 3) {
                     const key = a[1];
@@ -254,8 +261,8 @@ function plugin( imports, register) {
                         setFlag(ch, true);
                     }
                 } else {
-                // either grouped short flags: -abc -> a=true,b=true,c=true
-                // or attached short value: -ovalue -> o='value'
+                    // either grouped short flags: -abc -> a=true,b=true,c=true
+                    // or attached short value: -ovalue -> o='value'
                     const rest = a.slice(2);
                     if (/^[A-Za-z]+$/.test(rest)) {
                         for (let j = 1; j < a.length; j++) {
@@ -282,16 +289,16 @@ function plugin( imports, register) {
 
     // run actions (exposed as cli.run), but before that warn about unknown flags
     cli.run = function runActions() {
-        if(!cli._helpAdded) {
-            cli('--help','-h','help')
+        if (!cli._helpAdded) {
+            cli('--help', '-h', 'help')
                 .info('Show help information')
                 .do(() => {
-                    var helpText = '\t'+(cli._info || []).join('\n\t');
+                    var helpText = '\t' + (cli._info || []).join('\n\t');
                     console.log(`${cli.description ? cli.description + '\n' : ''}Usage: moniker [options]\n\nOptions:\n${helpText}`);
                 });
             cli._helpAdded = true;
         }
-    
+
         let actionsRun = false;
         const lastParsed = cli._lastParsed || parseArgs();
         const registered = cli._registeredFlags || new Set();
@@ -318,7 +325,8 @@ function plugin( imports, register) {
 
         // allow a pre-run hook (e.g., to inject mutated globals into remaining action values)
         try {
-            if (typeof cli._preRunHook === 'function') cli._preRunHook();
+            // if (typeof cli._preRunHook === 'function') cli._preRunHook();
+            app.emit('pre-run');
         } catch (e) {
             console.error('Error in pre-run hook:', e);
         }
@@ -348,14 +356,27 @@ function plugin( imports, register) {
         return actionsRun;
     };
 
-    cli('--version','-v','version')
+    cli('--version', '-v', 'version')
         .info('Show the version number')
         .do(() => {
             var packageJson = require('../package.json');
             console.log(`v${packageJson.version}`);
         });
 
+    app.on('ready', () => {
+        // auto-run CLI on app ready
+        cli._preRunHook = function () {
+            this.emit('pre-run');
+        };
+        const ok = cli.run();
+        if (!ok) {
+            try {
+                app.services.Log.out('No actions run.');
+            } catch (_) { console.log('No actions run.'); }
+        }
+    });
+
     register(null, { cli });
 }
 
-module.exports = plugin;
+export default plugin;

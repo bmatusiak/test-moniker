@@ -1,27 +1,30 @@
 
+import fs from 'fs';
+import path from 'path';
+import child_process from 'child_process';
+import events from 'events';
+import os from 'os';
 
 plugin.consumes = [];
 plugin.provides = ['nodejs'];
 
-function plugin( imports, register) {
-    var {  } = imports;
+function plugin(imports, register) {
+    var { } = imports;
 
-    const fs = require('fs');
-    const path = require('path');
-    const dir = require('dir');
-    const child_process = require('child_process');
-    const events = require('events');
-    const os = require('os');
+    if (events.EventEmitter)
+        events.EventEmitter.EventEmitter = events.EventEmitter;
 
-    register(null, { nodejs: { 
-        fs, 
-        path,
-        dir,
-        child_process, 
-        events,
-        os
-    } });
+    register(null, {
+        nodejs: {
+            fs,
+            path,
+            child_process,
+            events: events.EventEmitter || events,
+            os
+        }
+    });
 }
 
 
-module.exports = plugin;
+export default plugin;
+

@@ -1,13 +1,12 @@
 
 
-plugin.consumes = [];
-plugin.provides = ['device'];
+plugin.consumes = ['nodejs'];
+plugin.provides = ['device_manager'];
 
-function plugin( imports, register) {
-    var {  } = imports;
-    const { spawnSync, spawn } = require('child_process');
-    const fs = require('fs');
-    const path = require('path');
+function plugin(imports, register) {
+    const { nodejs } = imports;
+    const { spawnSync, spawn } = nodejs.child_process;
+    const { fs, path } = nodejs;
 
     function safeExec(cmd, args, opts) {
         try {
@@ -28,7 +27,7 @@ function plugin( imports, register) {
                 const parts = l.split(/\s+/);
                 if (parts[0]) out.push({ serial: parts[0], status: parts[1] || 'unknown' });
             }
-        } catch (_) {}
+        } catch (_) { }
         return out;
     }
 
@@ -76,8 +75,8 @@ function plugin( imports, register) {
             const child = spawn('adb', args);
             let stderr = '';
             let outPut = '';
-            child.stdout.on('data', (d) => { try { outPut += String(d); } catch (_) {} });
-            child.stderr.on('data', (d) => { try { stderr += String(d); } catch (_) {} });
+            child.stdout.on('data', (d) => { try { outPut += String(d); } catch (_) { } });
+            child.stderr.on('data', (d) => { try { stderr += String(d); } catch (_) { } });
             child.on('error', (err) => {
                 if (typeof cb === 'function') return cb({ ok: false, output: String(err) });
             });
@@ -85,7 +84,7 @@ function plugin( imports, register) {
                 if (code === 0) {
                     if (typeof cb === 'function') return cb({ ok: true, output: outPut });
                 } else {
-                    if (typeof cb === 'function') return cb({ ok: false, output: stderr || '~BUGREPORT FAILED'  });
+                    if (typeof cb === 'function') return cb({ ok: false, output: stderr || '~BUGREPORT FAILED' });
                 }
             });
             return { ok: true, async: true, pid: child.pid };
@@ -113,17 +112,16 @@ function plugin( imports, register) {
         }
     }
 
-    module.exports = {
-        safeExec,
-        listDevices,
-        startEmulator,
-        captureBugreport,
-        captureBugreportSync,
-        captureLogcat
-    };
-
-    register(null, { device: {} });
+    register(null, {
+        device_manager: {
+            safeExec,
+            listDevices,
+            startEmulator,
+            captureBugreport,
+            captureBugreportSync,
+            captureLogcat
+        }
+    });
 }
 
-
-module.exports = plugin;
+export default plugin;
