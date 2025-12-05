@@ -669,7 +669,7 @@ function adbLogCat(done) {
 
     function logLine(serial, rawLine) {
         // Emit raw logcat output exactly as produced by adb (no reformatting)
-        try { out(rawLine); } catch (_) { console.log(rawLine); }
+        try { out('[ADB-' + serial + '] ' + rawLine); } catch (_) { console.log(rawLine); }
         try { if (Log && Log.append) Log.append(rawLine); } catch (_) {}
     }
 
@@ -693,6 +693,29 @@ function adbLogCat(done) {
         const args = ['-s', serial, 'logcat', '-v', 'time'];
         if (pid) {
             args.push('--pid', pid);
+        }
+
+        // Silence very noisy system tags observed during short captures.
+        // These were determined by sampling raw `adb logcat -v time` and
+        // represent frequent system noise we generally don't need in device logs.
+        const NOISY_TAGS = [
+            'hwcomposer',
+            'AudioALSAStreamManager',
+            'AudioALSACaptureDataProviderNormal',
+            'WifiHAL',
+            'WifiVendorHal',
+            'SemNscXgbMsL1',
+            'SemNscXgbL2Rt',
+            'SemNscXgbL2Nrt',
+            'data_transfer',
+            'WifiProfileShare',
+            'SurfaceFlinger',
+            'io_stats',
+            'EPDG',
+            'AudioALSAStreamManager'
+        ];
+        for (const t of NOISY_TAGS) {
+            try { args.push(t + ':S'); } catch (_) {}
         }
 
         proc.setup('adb', args, { stdio: 'pipe' });
