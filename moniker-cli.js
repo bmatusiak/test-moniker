@@ -467,6 +467,16 @@ cli('--start-dev-server','-s')
                             },
                             (serial, line) => {//crashDetect
                                 console.log('[CRASH DETECTED] on device', serial + ':', line);
+                                //kill app package id before running bugreport
+                                try {
+                                    const appPkg = '';// compute app package id (try app.json then AndroidManifest)
+                                    if (appPkg) {
+                                        console.log('[CRASH HANDLER] Stopping app', appPkg, 'on device', serial + '...');
+                                        const stopRes = device_manager.safeExec('adb', ['-s', serial, 'shell', 'am', 'force-stop', appPkg]);
+                                        console.log('[CRASH HANDLER] Stopped app result:', stopRes && stopRes.ok ? 'ok' : ('failed: ' + (stopRes.stderr || stopRes.stdout || '~UNKNOWN')));
+                                    }
+                                } catch (_) {}
+
                                 // capture bugreport on crash keywords
                                 try {
                                     if (_CAPTURE_ON_CRASH) {
