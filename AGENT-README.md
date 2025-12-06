@@ -143,6 +143,6 @@ Moniker Doctor Results:
 - free_mem: 15014006784
 - workspace_has_package_json: true
 - workspace_has_app_json: true
-- app_package: com.bmatusiak.examplemoniker
+- app_package: < app.package.id >
 ```
 That's all — install, run via npx, import MonikerView, and wire local `__e2e_tests__` into the component.
