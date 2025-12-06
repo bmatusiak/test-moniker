@@ -1,17 +1,18 @@
 const { log } = require('console');
 
 
-plugin.consumes = ['cli', 'workspace', 'Log', 'device_manager', 'process_manager', 'crash', 'nodejs', 'doctor'];
+plugin.consumes = ['cli', 'workspace', 'Log', 'device_manager', 'process_manager', 'crash', 'nodejs', 'doctor', 'config'];
 plugin.provides = ['commands'];
 
 function plugin(imports, register) {
-    var { cli, workspace, Log, device_manager, process_manager, crash, nodejs, doctor } = imports;
+    var { cli, workspace, Log, device_manager, process_manager, crash, nodejs, doctor, config } = imports;
     const EventEmitter = nodejs.events.EventEmitter;
     const { run, tryRun } = process_manager
 
     let _PROCESS_EXIT_CODE = 0;
 
     const _doctor = doctor.get();
+    const _config = config.get();
 
     function onCrashDetected() {
 
@@ -272,12 +273,6 @@ function plugin(imports, register) {
         const collectors = [];
         let closed = 0;
 
-        function logLine(serial, rawLine) {
-            // Emit raw logcat output exactly as produced by adb (no reformatting)
-            // try { out('[ADB-' + serial + '] ' + rawLine); } catch (_) { console.log(rawLine); }
-            try { if (out) out(rawLine); } catch (_) { }
-        }
-
         function makeCollector(serial) {
             // clear logcat buffer first
             try { device_manager.safeExec('adb', ['-s', serial, 'logcat', '-c']); } catch (_) { }
@@ -303,22 +298,7 @@ function plugin(imports, register) {
             // Silence very noisy system tags observed during short captures.
             // These were determined by sampling raw `adb logcat -v time` and
             // represent frequent system noise we generally don't need in device logs.
-            const NOISY_TAGS = [
-                'hwcomposer',
-                'AudioALSAStreamManager',
-                'AudioALSACaptureDataProviderNormal',
-                'WifiHAL',
-                'WifiVendorHal',
-                'SemNscXgbMsL1',
-                'SemNscXgbL2Rt',
-                'SemNscXgbL2Nrt',
-                'data_transfer',
-                'WifiProfileShare',
-                'SurfaceFlinger',
-                'io_stats',
-                'EPDG',
-                'AudioALSAStreamManager'
-            ];
+            const NOISY_TAGS = _config.noisyTags || [];
             for (const t of NOISY_TAGS) {
                 try { args.push(t + ':S'); } catch (_) { }
             }
@@ -332,7 +312,7 @@ function plugin(imports, register) {
                 buffer = parts.pop();
                 for (const line of parts) {
                     if (!line) continue;
-                    logLine(serial, line);
+                    out('[ADB-' + serial + '] ' + line);
                     // capture bugreport on crash keywords
                     try {
                         if (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal')) {

@@ -13,14 +13,31 @@ Quick usage
 Using the CLI
 - This package provides the `test-moniker` CLI. From the project root you can run it with `npx test-moniker`.
 
+Commands
+- `doctor`: Run environment and health diagnostics (checks adb, java, SDK, installed package versions and device state).
+- `--start-dev-server` / `-s`: Start the metro development server and optionally run the Android build flow.
+
+
 Common flags
 - `--workspace <path>` / `-w <path>`: override the auto-detected workspace root (accepts relative paths).
-- `--print-workspace` / `-p`: demo flag that prints the resolved workspace to stdout.
-- `--verbose` / `-V`: enable verbose output and logging.
-- `--dry-run` / `-n`: show actions without executing them.
+- `--print-workspace` / `-p`: print the resolved workspace available to handlers.
+- `--config <path>`: path to a moniker config file (relative to workspace).
+- `--init-config`: create a default `moniker.config.js` in the current working directory.
 - `--ci`: CI-friendly mode (quiet console, writes logs, fail-fast behavior).
-- `--json-log <path>` / `-j <path>`: write line-delimited JSON log entries to the given path (relative to workspace).
 - `--force` / `-f`: bypass workspace validation (use with caution).
+- `--dry-run` / `-n`: show actions without executing them.
+- `--verbose` / `-V`: enable verbose output and logging.
+- `--json`, `--json-log`, `-j`: output JSON/logging from commands (line-delimited when used).
+- `--log`: enable textual log output to the default moniker log file (created under the workspace `logs/` folder).
+- `--silent`: reduce console output (write logs instead of printing to console).
+- `--capture-bugreport-on-crash`: automatically capture an adb bugreport when a crash is detected.
+
+Logging and JSON output
+- `--log`: enable textual log output to the default moniker log file (created under the workspace `logs/` folder). The CLI will print the path when logs are saved.
+- `--silent`: reduce console output; prefer writing logs instead of printing to stdout.
+- `--json`, `--json-log`, `-j` : enable line-delimited JSON log entries. If a path is provided it will be used; otherwise JSON output will be emitted to stdout.
+
+Tip: run `npx test-moniker --help` to view the full, current list of available flags and commands.
 
 Pre-run flags
 - The CLI supports marking handlers as pre-run flags using the handler chain method `.flags({ pre: true })`.
@@ -37,10 +54,22 @@ Examples
 npx test-moniker --print-workspace
 ```
 
+- Create a default config in the current working directory:
+
+```bash
+npx test-moniker --init-config
+```
+
 - Start metro + build on Android (dev flow):
 
 ```bash
 npx test-moniker --start-dev-server
+```
+
+- Start metro and capture bugreports automatically when a crash is detected:
+
+```bash
+npx test-moniker --start-dev-server --capture-bugreport-on-crash
 ```
 
 - CI run writing JSON logs:
