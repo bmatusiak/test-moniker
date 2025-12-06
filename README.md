@@ -47,6 +47,22 @@ Pre-run flags
 Environment
 - When the CLI resolves a workspace it sets `TEST_MONIKER_WORKSPACE` in the process environment. Handlers also receive a `values.workspace` property.
 
+e2e Testing
+- Test example, `projectRoot/__e2e_tests__/sampleTest.js`
+
+```js
+module.exports = function sampleTest({describe, it}) {//function name as test name
+    describe(sampleTest.name, () => {
+        it('harness basic sanity', async({ log, assert }) => {
+            log('init: basic sanity check (simulating work)');
+            //delay to simulate work
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            assert.ok(true, 'basic truthy check');
+        });
+    });
+};
+```
+
 Examples
 - Print resolved workspace:
 
