@@ -146,3 +146,17 @@ Moniker Doctor Results:
 - app_package: < app.package.id >
 ```
 That's all — install, run via npx, import MonikerView, and wire local `__e2e_tests__` into the component.
+
+Agent Checklists 
+- when a user says 'check moniker' run code below
+    ```bash
+    npx test-moniker doctor
+    ```
+
+- when a user says 'build and test' run code below
+    ```bash
+    npx test-moniker -s
+    ```
+    * if fatal crash detected, add `--capture-bugreport-on-crash` to the command, to capture bug report on next run.
+
+    
