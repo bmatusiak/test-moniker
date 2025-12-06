@@ -290,13 +290,97 @@ function plugin(imports, register) {
     // run actions (exposed as cli.run), but before that warn about unknown flags
     cli.run = function runActions() {
         if (!cli._helpAdded) {
+            cli._helpAdded = true;
+            // add help handler
             cli('--help', '-h', 'help')
                 .info('Show help information')
                 .do(() => {
                     var helpText = '\t' + (cli._info || []).join('\n\t');
                     console.log(`${cli.description ? cli.description + '\n' : ''}Usage: moniker [options]\n\nOptions:\n${helpText}\n`);
                 });
-            cli._helpAdded = true;
+            // add completion generator handler
+            cli('completion', '--completion', '--generate-completion')
+                .info('Generate shell completion script for bash/zsh/fish')
+                .do((values) => {
+                    try {
+                        const path = nodejs.path;
+                        // prefer the installed CLI name for completions; default to `test-moniker`
+                        const detected = path.basename(process.argv[1]) || 'moniker';
+                        const prog = 'test-moniker';
+                        // build a list of known options/commands from cli._info
+                        const tokens = [];
+                        for (const entry of (cli._info || [])) {
+                            const part = String(entry).split('\t')[0] || '';
+                            for (const t of part.split(',')) {
+                                const s = String(t || '').trim();
+                                if (!s) continue;
+                                // normalize positional names to --name for completion
+                                if (!s.startsWith('-')) tokens.push('--' + s);
+                                else tokens.push(s);
+                            }
+                        }
+                        const uniq = Array.from(new Set(tokens)).join(' ');
+                        const shell = values && (values.completion || values['--completion'] || values['generate-completion'] || values['--generate-completion']) || 'bash';
+                        const installRequested = values && (values['install-completion'] || values['--install-completion'] || values.installCompletion || values.install);
+                        if (shell === 'bash') {
+                            // simpler, explicit assembly of the bash completion script
+                            const lines = [];
+                            lines.push('# bash completion for ' + prog);
+                            lines.push('_' + prog + '_completions() {');
+                            lines.push('  local cur');
+                            lines.push('  cur="${COMP_WORDS[COMP_CWORD]}"');
+                            lines.push('  COMPREPLY=( $(compgen -W "' + uniq + '" -- "$cur") )');
+                            lines.push('}');
+                            lines.push('complete -F _' + prog + '_completions ' + prog);
+                            lines.push('');
+                            lines.push('# npx wrapper support: if user runs "npx ' + prog + ' ..." provide completions when the second word is ' + prog);
+                            lines.push('_npx_' + prog + '_completions() {');
+                            lines.push('  if [ "${COMP_WORDS[1]}" = "' + prog + '" ]; then');
+                            lines.push('    local cur="${COMP_WORDS[COMP_CWORD]}"');
+                            lines.push('    COMPREPLY=( $(compgen -W "' + uniq + '" -- "$cur") )');
+                            lines.push('  fi');
+                            lines.push('}');
+                            lines.push('complete -F _npx_' + prog + '_completions npx');
+                            const out = lines.join('\n') + '\n';
+
+                            // if installation requested, attempt to write into user bash-completion directory
+                            try {
+                                const fs = nodejs.fs;
+                                const os = nodejs.os;
+                                const path = nodejs.path;
+                                if (installRequested) {
+                                    const homedir = os.homedir();
+                                    const xdg = process.env.XDG_DATA_HOME || path.join(homedir, '.local', 'share');
+                                    const bashDir = path.join(xdg, 'bash-completion', 'completions');
+                                    try { if (!fs.existsSync(bashDir)) fs.mkdirSync(bashDir, { recursive: true }); } catch (_) { }
+                                    const dest = path.join(bashDir, prog);
+                                    fs.writeFileSync(dest, out, 'utf8');
+                                    console.log('Installed bash completion to', dest);
+                                    return;
+                                }
+                            } catch (e) {
+                                console.error('Failed to install completion:', e && e.message ? e.message : e);
+                            }
+                            console.log(out);
+                        } else if (shell === 'zsh') {
+                            console.log(`# zsh completion for ${prog}
+_${prog}_completions() {
+  reply=(${uniq})
+}
+compctl -K _${prog}_completions ${prog}`);
+                        } else if (shell === 'fish') {
+                            // fish uses a different completion mechanism; provide a simple list
+                            for (const opt of uniq.split(' ')) {
+                                if (!opt) continue;
+                                console.log(`complete -c ${prog} -l ${opt.replace(/^--/, '')} -d "${opt}"`);
+                            }
+                        } else {
+                            console.log('Supported shells: bash, zsh, fish');
+                        }
+                    } catch (e) {
+                        console.error('Failed to generate completion:', e && e.message ? e.message : e);
+                    }
+                });
         }
 
         let actionsRun = false;
