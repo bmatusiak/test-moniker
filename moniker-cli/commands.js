@@ -1,21 +1,35 @@
 const { log } = require('console');
 
 
-plugin.consumes = ['cli', 'workspace', 'Log', 'device_manager', 'process_manager', 'crash', 'nodejs', 'doctor', 'config'];
+plugin.consumes = ['cli', 'workspace', 'Log', 'device_manager', 'process_manager', 'crash', 'nodejs', 'doctor', 'config', 'globals'];
 plugin.provides = ['commands'];
 
 function plugin(imports, register) {
-    var { cli, workspace, Log, device_manager, process_manager, crash, nodejs, doctor, config } = imports;
+    var { cli, workspace, Log, device_manager, process_manager, crash, nodejs, doctor, config, globals } = imports;
     const EventEmitter = nodejs.events.EventEmitter;
+    const fs = nodejs.fs;
+    const path = nodejs.path;
     const { run, tryRun } = process_manager
 
     let _PROCESS_EXIT_CODE = 0;
 
+    const processStartTime = Date.now();
     const _doctor = doctor.get();
     const _config = config.get();
 
     function onCrashDetected() {
 
+    }
+
+    const exitProcess = (code) => {
+        Log.out('Logs saved to ' + Log.path);
+        Log.out('Process ran for ' + ((Date.now() - processStartTime) / 1000) + ' seconds.');
+        //save Log.path to logs/latest-log.txt
+        try {
+            const latestLogPath = path.join(globals.workspace, 'logs', 'latest-log.txt');
+            fs.writeFileSync(latestLogPath, Log.path, 'utf8');
+        } catch (_) { }
+        process.exit(code);
     }
 
     var processes = {};
@@ -98,13 +112,15 @@ function plugin(imports, register) {
                                     });
                                 } catch (_) { }
                             } else {
+                                Log.out('Crash detected, but crash capturing is disabled.');
+                                Log.out('Run --capture-bugreport-on-crash to enable crash capturing.');
                                 // stopping log cat will stop metro
                                 logcat.stop();
                             }
                         } catch (_) { }
                     });
                     logcat.on('done', () => {
-                        if (crashDetected) process.exit(_PROCESS_EXIT_CODE);//exit when crashDetected detected
+                        if (crashDetected) exitProcess(_PROCESS_EXIT_CODE);//exit when crashDetected detected
                         else metro.process.stop();
                     })
                 })
@@ -114,17 +130,17 @@ function plugin(imports, register) {
                     metro.process.stop();
                 });
                 _builder.on('done', (code) => {
-                    if (code !== 0 && !detectedOpen) {
+                    if (code == 1 && !detectedOpen) {
                         _PROCESS_EXIT_CODE = 1;
                         err('Build server error: (see logs for details)');
                         metro.process.stop();
+                        if (logcat) logcat.stop();
                     }
                 });
             });
             metro.on('close', () => {
-                if (Log.enabled) console.log('Logs saved to ' + Log.path);
                 if (!crashDetected)
-                    process.exit(_PROCESS_EXIT_CODE);//exit when metro stops
+                    exitProcess(_PROCESS_EXIT_CODE);//exit when metro stops
             });
 
             metro.on('done', () => {

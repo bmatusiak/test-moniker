@@ -8,7 +8,7 @@ function plugin(imports, register) {
     const Log = new EventEmitter();
     Log._logTag = 'moniker-log';
     Log._json = false;
-    Log._write_enabled = false;
+    Log._write_enabled = true;
     Log._out_enabled = true;
     Log._err_enabled = true;
     Log._verbose = false;
@@ -119,12 +119,19 @@ function plugin(imports, register) {
             Log._json = true;
         });
 
-    cli('--log')
-        .info('Log Output to moniker-log-' + Date.now() + '.txt')
+    cli('--no-log')
+        .info('Disable Log Output')
         .flags({ pre: true })
         .do((values) => {
             Log.path = typeof values.log === 'string' ? values.log : Log.path;
-            Log.enabled = true;
+            Log.enabled = false;
+        });
+
+    cli('--log')
+        .info('Specify Log Output name')
+        .flags({ pre: true })
+        .do((values) => {
+            Log.path = 'logs/' + (typeof values.log === 'string' ? values.log : Log.path);
         });
 
     cli('--silent')
