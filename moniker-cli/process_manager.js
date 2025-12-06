@@ -152,7 +152,9 @@ function plugin(imports, register) {
 
     function stopByName(name) {
         if (!name) {
-            process_manager.stopAll();
+            for (const n in loadedProcesses) {
+                loadedProcesses[n].stop();
+            }
         } else if (loadedProcesses[name]) {
             loadedProcesses[name].stop();
         }
@@ -238,6 +240,23 @@ function plugin(imports, register) {
         }
     }
     process_manager.tryRun = tryRun;
+
+    //graceful shutdown on exit signals
+    process.on('SIGINT', () => {
+        Log.out('\nReceived SIGINT — stopping child processes...');
+        try { process_manager.stop(); } catch (_) { }
+        setTimeout(() => {
+            process.exit(130);
+        }, 1000);
+    });
+    process.on('SIGTERM', () => {
+        Log.out('\nReceived SIGTERM — stopping child processes...');
+        try { process_manager.stop(); } catch (_) { }
+        setTimeout(() => {
+            process.exit(143);
+        }, 1000);
+    });
+
 
     register(null, { process_manager });
 }
