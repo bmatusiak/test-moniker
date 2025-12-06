@@ -291,13 +291,6 @@ function plugin(imports, register) {
     cli.run = function runActions() {
         if (!cli._helpAdded) {
             cli._helpAdded = true;
-            // add help handler
-            cli('--help', '-h', 'help')
-                .info('Show help information')
-                .do(() => {
-                    var helpText = '\t' + (cli._info || []).join('\n\t');
-                    console.log(`${cli.description ? cli.description + '\n' : ''}Usage: moniker [options]\n\nOptions:\n${helpText}\n`);
-                });
             // add completion generator handler
             cli('completion', '--completion', '--generate-completion')
                 .info('Generate shell completion script for bash/zsh/fish')
@@ -380,6 +373,14 @@ compctl -K _${prog}_completions ${prog}`);
                     } catch (e) {
                         console.error('Failed to generate completion:', e && e.message ? e.message : e);
                     }
+                });
+
+            // add help handler
+            cli('--help', '-h', 'help')
+                .info('Show help information')
+                .do(() => {
+                    var helpText = '\t' + (cli._info || []).join('\n\t');
+                    console.log(`${cli.description ? cli.description + '\n' : ''}Usage: test-moniker [options]\n\nOptions:\n${helpText}\n`);
                 });
         }
 

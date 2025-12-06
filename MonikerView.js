@@ -3,7 +3,7 @@ import { View, Text, Button, ScrollView, StyleSheet, ActivityIndicator, Pressabl
 
 const harness = require('./harness');
 
-function MonikerView(props = { tests: [] }) { 
+function MonikerView(props = { tests: [] }) {
     const [running, setRunning] = useState(false);
     const [results, setResults] = useState(null);
     // Prepopulate test list from harness so UI can display tests before running
@@ -13,7 +13,7 @@ function MonikerView(props = { tests: [] }) {
             if (reg) {
                 return reg.map(s => ({ name: s.name, tests: s.tests.map(t => ({ name: t.name, status: 'pending', ok: null, error: null })) }));
             }
-        } catch (_e) {}
+        } catch (_e) { }
         return [];
     };
     const [testList, setTestList] = useState([]);
@@ -26,18 +26,18 @@ function MonikerView(props = { tests: [] }) {
     const formatDuration = (ms) => {
         if (ms == null) return '';
         if (ms < 1000) return `${ms}ms`;
-        return `${(ms/1000).toFixed(2)}s`;
+        return `${(ms / 1000).toFixed(2)}s`;
     };
 
-    const runAll = async() => {
+    const runAll = async () => {
         if (running || globalThis._testRan) {
-            
+
             return;
         }
         globalThis._testRan = true;
         setRunning(true);
         setResults(null);
-        try { log('TESTS STARTING'); } catch (_) {}
+        try { log('TESTS STARTING'); } catch (_) { }
         // reset testList to pending
         setTestList(prev => prev.map(s => ({ ...s, tests: s.tests.map(t => ({ ...t, status: 'pending', ok: null, error: null })) })));
         const onTestUpdate = ({ suiteName, testName, status, error }) => {
@@ -85,19 +85,19 @@ function MonikerView(props = { tests: [] }) {
             const stopTime = Date.now();
             const totalDurationMs = stopTime - allStart;
             setTotalDurationMs(totalDurationMs);
-            try {  log('TEST ENDED: 5 Second delay to flush logs'); } catch (_) {}
+            try { log('TEST ENDED: 5 Second delay to flush logs'); } catch (_) { }
             setTimeout(() => {
                 //short delay to allow log flush before indicating completion
-                try {  log('TEST COMPLETE |', `Passed: ${res.passed} Failed: ${res.failed} ${totalDurationMs ? `(${formatDuration(totalDurationMs)})` : ''}`); } catch (_) {}
+                try { log('TEST COMPLETE |', `Passed: ${res.passed} Failed: ${res.failed} ${totalDurationMs ? `(${formatDuration(totalDurationMs)})` : ''}`); } catch (_) { }
             }, 5000);
         } catch (e) {
             log('harness.run threw', e);
         } finally {
             setRunning(false);
         }
-    }; 
+    };
 
-    const runSuite = async(targetSuite) => {
+    const runSuite = async (targetSuite) => {
         if (running) return;
         globalThis._testRan = true;
         setRunning(true);
@@ -141,22 +141,27 @@ function MonikerView(props = { tests: [] }) {
     };
 
     useEffect(() => {
-        (async()=>{
+        (async () => {
 
             if (running || globalThis._testRan) {
-                if(__DEV__){
-                    log('Tests already running — reloading');  
+                if (__DEV__) {
+                    log('Tests already running — reloading');
                     DevSettings.reload();
                 }
                 return;
             }
             console.log('[Moniker] Test Harness Loaded');
-            
-            const moduleList = [  require('./MonikerTest')  ].concat(props.tests || [], MonikerView.tests || []);
+
+            // load tests: built-in MonikerTest, any tests passed via props, and any tests attached to the component
+            // TIP: to include tests from the repository __e2e_tests__ folder, require them in your app (e.g. index.js)
+            // and add them to MonikerView.tests or pass them via props.tests:
+            //   MonikerView.tests = (MonikerView.tests || []).concat([ require('../__e2e_tests__/myTest') ]);
+            //   OR <MonikerView tests={[ require('../__e2e_tests__/myTest') ]} />
+            const moduleList = [require('./MonikerTest')].concat(props.tests || [], MonikerView.tests || []);
 
             const testsByName = {};
             moduleList.forEach((mod) => {
-                if(typeof mod === 'function' && mod.name){
+                if (typeof mod === 'function' && mod.name) {
                     mod = { name: mod.name, test: mod };
                 }
                 if (!mod || !mod.name || typeof mod.test !== 'function') {
@@ -168,7 +173,7 @@ function MonikerView(props = { tests: [] }) {
                 try { mod.test(harness); } catch (e) { console.warn('[Moniker] failed to register', mod.name, e && e.message); }
             });
 
-            setTestList(makeInitial()); 
+            setTestList(makeInitial());
         })();
     }, []);
 
@@ -181,11 +186,11 @@ function MonikerView(props = { tests: [] }) {
     return (
         <View style={styles.container}>
             <Text style={styles.title}>Test Runner</Text>
-            <Button title={running ? 'Running…' : 'Run Tests'} onPress={()=>{
+            <Button title={running ? 'Running…' : 'Run Tests'} onPress={() => {
                 if (__DEV__) {
                     DevSettings.reload();
-                }else{
-                    globalThis._testRan = false; 
+                } else {
+                    globalThis._testRan = false;
                     runAll();
                 }
             }} disabled={running} />
@@ -205,7 +210,7 @@ function MonikerView(props = { tests: [] }) {
 
             <ScrollView style={styles.scroll} contentContainerStyle={{ flexGrow: 1 }}>
                 {testList.map((suite, si) => (
-                    <Pressable key={si} onPress={() => runSuite(suite.name)} style={({pressed}) => [styles.suite, pressed && styles.suitePressed]}>
+                    <Pressable key={si} onPress={() => runSuite(suite.name)} style={({ pressed }) => [styles.suite, pressed && styles.suitePressed]}>
                         <Text style={styles.suiteTitle}>{suite.name}{suiteDurations[suite.name] ? ` — ${formatDuration(suiteDurations[suite.name])}` : ''}</Text>
                         {suite.tests.map((t, ti) => (
                             <View key={ti} style={styles.testRow}>

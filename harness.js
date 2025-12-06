@@ -46,7 +46,7 @@ async function run(context = {}) {
 
     const log = (context.log && typeof context.log === 'function')
         ? context.log
-        : ((...args) => { try { console.log('[harness]', ...args); } catch (_) {} });
+        : ((...args) => { try { console.log('[harness]', ...args); } catch (_) { } });
 
     for (const suite of suites) {
         const suiteRes = { name: suite.name, tests: [] };
@@ -58,11 +58,11 @@ async function run(context = {}) {
 
             const testRes = { name: t.name, ok: false, error: null };
 
-            try { if (onTestStart) onTestStart({ suiteName: suite.name, testName: t.name }); } catch (_) {}
-            try { if (context.onTestUpdate) context.onTestUpdate({ suiteName: suite.name, testName: t.name, status: 'running' }); } catch (_e) {}
+            try { if (onTestStart) onTestStart({ suiteName: suite.name, testName: t.name }); } catch (_) { }
+            try { if (context.onTestUpdate) context.onTestUpdate({ suiteName: suite.name, testName: t.name, status: 'running' }); } catch (_e) { }
 
             try {
-                const testPromise = (async() => {
+                const testPromise = (async () => {
                     await t.fn({ ...context, assert: { ok, equal, notEqual } });
                 })();
 
@@ -78,19 +78,19 @@ async function run(context = {}) {
                     await testPromise;
                 }
 
-                try { if (context.onTestUpdate) context.onTestUpdate({ suiteName: suite.name, testName: t.name, status: 'passed' }); } catch (_e) {}
+                try { if (context.onTestUpdate) context.onTestUpdate({ suiteName: suite.name, testName: t.name, status: 'passed' }); } catch (_e) { }
                 testRes.ok = true;
                 results.passed++;
                 log(`  ✓ ${t.name}`);
             } catch (e) {
                 testRes.ok = false;
                 testRes.error = e && (e.stack || e.message || String(e));
-                try { if (context.onTestUpdate) context.onTestUpdate({ suiteName: suite.name, testName: t.name, status: 'failed', error: testRes.error }); } catch (_e) {}
+                try { if (context.onTestUpdate) context.onTestUpdate({ suiteName: suite.name, testName: t.name, status: 'failed', error: testRes.error }); } catch (_e) { }
                 results.failed++;
                 log(`  ✗ ${t.name} -> ${testRes.error}`);
             }
 
-            try { if (onTestEnd) onTestEnd({ suiteName: suite.name, testName: t.name, result: testRes }); } catch (_e) {}
+            try { if (onTestEnd) onTestEnd({ suiteName: suite.name, testName: t.name, result: testRes }); } catch (_e) { }
 
             suiteRes.tests.push(testRes);
         }
