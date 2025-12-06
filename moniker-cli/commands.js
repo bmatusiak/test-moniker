@@ -1,37 +1,23 @@
+const { log } = require('console');
 
 
-plugin.consumes = ['cli', 'workspace', 'Log', 'device_manager', 'process_manager', 'crash', 'nodejs'];
+plugin.consumes = ['cli', 'workspace', 'Log', 'device_manager', 'process_manager', 'crash', 'nodejs', 'doctor'];
 plugin.provides = ['commands'];
 
 function plugin(imports, register) {
-    var { cli, workspace, Log, device_manager, process_manager, crash, nodejs } = imports;
-    const { spawnSync } = nodejs.child_process;
-
-    function run(cmd, args = [], opts = {}) {
-        const input = opts.input || null;
-        const env = Object.assign({}, process.env, opts.env || {});
-        const cwd = opts.cwd || process.cwd();
-        const stdio = input ? ['pipe', 'inherit', 'inherit'] : 'inherit';
-        // console.log(`\n$ ${[cmd, ...args].join(" ")}`);
-        const res = spawnSync(cmd, args, { env, stdio, input, cwd });
-        if (res.error) throw res.error;
-        if (res.status !== 0) {
-            const err = new Error(`Command failed: ${cmd} ${args.join(' ')}`);
-            err.status = res.status;
-            throw err;
-        }
-    }
-
-    function tryRun(cmd, args = [], opts = {}) {
-        try {
-            run(cmd, args, opts);
-            return true;
-        } catch (_e) {
-            return false;
-        }
-    }
+    var { cli, workspace, Log, device_manager, process_manager, crash, nodejs, doctor } = imports;
+    const EventEmitter = nodejs.events.EventEmitter;
+    const { run, tryRun } = process_manager
 
     let _PROCESS_EXIT_CODE = 0;
+
+    const _doctor = doctor.get();
+
+    function onCrashDetected() {
+
+    }
+
+    var processes = {};
 
     cli('--start-dev-server', '-s')
         .info('Start the metro development server')
@@ -39,115 +25,116 @@ function plugin(imports, register) {
             const { out, err } = Log;
             let metro, _builder, logcat, crashDetected = false;
             tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
-            metro = startMeroServer(//ready, close, done, error
-                () => {//ready
-                    _builder = buildAndInstall(//ready, close, intalled, open, failed
-                        false, // ready
-                        false,// close
-                        () => {// installed
-                            // logcat = adbLogCat(//done
-                            //     () => {//done
-                            //         metro.stop();
-                            //     });
-                        },
-                        () => {// opening
-                            logcat = adbLogCat(//done, crashDetect
-                                () => {//done
-                                    if (crashDetected) process.exit(_PROCESS_EXIT_CODE);//exit when crashDetected detected
-                                    else metro.stop();
-                                },
-                                (serial, line) => {//crashDetect
-                                    if (crashDetected) return;
-                                    crashDetected = true;
-                                    try { _PROCESS_EXIT_CODE = 1; } catch (_) { }
-                                    metro.stop();
+            metro = startMeroServer();
+
+            metro.on('ready', () => {
+                _builder = buildAndInstall();
+                _builder.on('opening', (error) => {
+                    logcat = adbLogCat();
+                    logcat.on('crash', (serial, line) => {
+                        if (crashDetected) return;
+                        crashDetected = true;
+                        try { _PROCESS_EXIT_CODE = 1; } catch (_) { }
+                        metro.process.stop();
 
 
-                                    // capture bugreport on crash keywords
+                        // capture bugreport on crash keywords
+                        try {
+                            if (crash.capture_enabled) {
+                                try {
+                                    err('[CRASH HANDLER] on device ' + serial + ': ' + line);
+                                    //kill app package id before running bugreport
                                     try {
-                                        if (_CAPTURE_ON_CRASH) {
-                                            try {
-                                                err('[CRASH HANDLER] on device ' + serial + ': ' + line);
-                                                //kill app package id before running bugreport
+                                        // compute app package id based on the same logic used in `doctor`
+                                        let appPkg = null;
+                                        try {
+                                            const fs = require('fs');
+                                            const path = require('path');
+                                            const appJsonPath = path.join(workspace.path, 'app.json');
+                                            if (fs.existsSync(appJsonPath)) {
+                                                const raw = fs.readFileSync(appJsonPath, 'utf8');
                                                 try {
-                                                    // compute app package id based on the same logic used in `doctor`
-                                                    let appPkg = null;
-                                                    try {
-                                                        const fs = require('fs');
-                                                        const path = require('path');
-                                                        const appJsonPath = path.join(workspace.path, 'app.json');
-                                                        if (fs.existsSync(appJsonPath)) {
-                                                            const raw = fs.readFileSync(appJsonPath, 'utf8');
-                                                            try {
-                                                                const obj = JSON.parse(raw);
-                                                                if (obj && obj.expo && obj.expo.android && obj.expo.android.package) appPkg = obj.expo.android.package;
-                                                                else if (obj && obj.expo && obj.expo.package) appPkg = obj.expo.package;
-                                                            } catch (_) { }
-                                                        }
-                                                    } catch (_) { }
-                                                    if (!appPkg) {
-                                                        try {
-                                                            const fs = require('fs');
-                                                            const path = require('path');
-                                                            const manifest = path.join(workspace.path, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
-                                                            if (fs.existsSync(manifest)) {
-                                                                const raw = fs.readFileSync(manifest, 'utf8');
-                                                                const m = raw.match(/package=\"([^\"]+)\"/);
-                                                                if (m) appPkg = m[1];
-                                                            }
-                                                        } catch (_) { }
-                                                    }
-                                                    if (appPkg) {
-                                                        err('[CRASH HANDLER] Stopping app ' + appPkg + ' on device ' + serial + '...');
-                                                        const stopRes = device_manager.safeExec('adb', ['-s', serial, 'shell', 'am', 'force-stop', appPkg]);
-                                                        err('[CRASH HANDLER] Stopped app result: ' + (stopRes && stopRes.ok ? 'ok' : ('failed: ' + (stopRes.stderr || stopRes.stdout || '~UNKNOWN'))));
-                                                    }
+                                                    const obj = JSON.parse(raw);
+                                                    if (obj && obj.expo && obj.expo.android && obj.expo.android.package) appPkg = obj.expo.android.package;
+                                                    else if (obj && obj.expo && obj.expo.package) appPkg = obj.expo.package;
                                                 } catch (_) { }
-
-                                                err('[CRASH HANDLER] Capturing bugreport for device ' + serial + '... This could take a while.');
-                                                // const ts = Date.now();
-                                                // const fs = require('fs');
+                                            }
+                                        } catch (_) { }
+                                        if (!appPkg) {
+                                            try {
+                                                const fs = require('fs');
                                                 const path = require('path');
-                                                const logDir = (Log && Log.path) ? path.join(workspace.path, path.dirname(Log.path)) : path.join(workspace.path, 'logs');
-                                                // try { if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true }); } catch (_) {}
-                                                // const outPath = path.join(logDir, 'bugreport-' + ts );
-                                                err('[CRASH HANDLER] Saving bugreport to folder ' + logDir);
-                                                device_manager.captureBugreport(logDir, serial, (crasRes) => {
-                                                    let ol = '[CRASH HANDLER] Captured bugreport: ' + (crasRes && crasRes.output ? crasRes.output : outPath);
-                                                    // try { err(ol); } catch (_) { console.log(ol); }
-                                                    try { if (out) out(ol); } catch (_) { }
-                                                    try { logcat.stop(); } catch (_) { }
-                                                });
+                                                const manifest = path.join(workspace.path, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+                                                if (fs.existsSync(manifest)) {
+                                                    const raw = fs.readFileSync(manifest, 'utf8');
+                                                    const m = raw.match(/package=\"([^\"]+)\"/);
+                                                    if (m) appPkg = m[1];
+                                                }
                                             } catch (_) { }
-                                        } else {
-                                            // stopping log cat will stop metro
-                                            logcat.stop();
+                                        }
+                                        if (appPkg) {
+                                            err('[CRASH HANDLER] Stopping app ' + appPkg + ' on device ' + serial + '...');
+                                            const stopRes = device_manager.safeExec('adb', ['-s', serial, 'shell', 'am', 'force-stop', appPkg]);
+                                            err('[CRASH HANDLER] Stopped app result: ' + (stopRes && stopRes.ok ? 'ok' : ('failed: ' + (stopRes.stderr || stopRes.stdout || '~UNKNOWN'))));
                                         }
                                     } catch (_) { }
-                                });
-                        },
-                        () => {// failed
-                            _PROCESS_EXIT_CODE = 1;
-                            err('Build server error: (see logs for details)');
-                            metro.stop();
-                        });
-                }, () => { //close
-                    if (Log.enabled) console.log('Logs saved to ' + Log.path);
-                    if (!crashDetected)
-                        process.exit(_PROCESS_EXIT_CODE);//exit when metro stops
-                }, () => {// done
-                    logcat.stop();
-                }, (error) => {// error
-                    err('Metro server error:', error);
-                    logcat.stop();
-                    metro.stop();
+
+                                    err('[CRASH HANDLER] Capturing bugreport for device ' + serial + '... This could take a while.');
+                                    // const ts = Date.now();
+                                    // const fs = require('fs');
+                                    const path = require('path');
+                                    const logDir = (Log && Log.path) ? path.join(workspace.path, path.dirname(Log.path)) : path.join(workspace.path, 'logs');
+                                    // try { if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true }); } catch (_) {}
+                                    // const outPath = path.join(logDir, 'bugreport-' + ts );
+                                    err('[CRASH HANDLER] Saving bugreport to folder ' + logDir);
+                                    device_manager.captureBugreport(logDir, serial, (crasRes) => {
+                                        let ol = '[CRASH HANDLER] Captured bugreport: ' + (crasRes && crasRes.output ? crasRes.output : outPath);
+                                        // try { err(ol); } catch (_) { console.log(ol); }
+                                        try { if (out) out(ol); } catch (_) { }
+                                        try { logcat.stop(); } catch (_) { }
+                                    });
+                                } catch (_) { }
+                            } else {
+                                // stopping log cat will stop metro
+                                logcat.stop();
+                            }
+                        } catch (_) { }
+                    });
+                    logcat.on('done', () => {
+                        if (crashDetected) process.exit(_PROCESS_EXIT_CODE);//exit when crashDetected detected
+                        else metro.process.stop();
+                    })
+                })
+                _builder.on('failed', (error) => {
+                    _PROCESS_EXIT_CODE = 1;
+                    err('Build server error: (see logs for details)');
+                    metro.process.stop();
                 });
+            });
+            metro.on('close', () => {
+                if (Log.enabled) console.log('Logs saved to ' + Log.path);
+                if (!crashDetected)
+                    process.exit(_PROCESS_EXIT_CODE);//exit when metro stops
+            });
+
+            metro.on('done', () => {
+                logcat.stop();
+            });
+
+            metro.on('error', (error) => {
+                err('Metro server error:', error);
+                logcat.stop();
+                metro.process.stop();
+            });
         });
 
 
     function startMeroServer(ready, close, done, error) {
         const { out, err } = Log;
         const metro = process_manager('metro');
+        const $metro = new EventEmitter();
+        $metro.process = metro;
+
         metro.setup('npx', ['expo', 'start', '--dev-client'], { cwd: workspace.path, stdio: 'pipe' });
 
         let metroBuf = '';
@@ -157,12 +144,15 @@ function plugin(imports, register) {
                 const data = chunk.toString();
                 if (data.includes('Waiting on http')) {
                     if (ready) ready();
+                    $metro.emit('ready');
                 }
                 if (data.includes('TEST COMPLETE')) {
                     if (done) done();
+                    $metro.emit('done');
                 }
                 if (data.includes('ERROR  SyntaxError')) {
                     if (error) error(data);
+                    $metro.emit('error', data);
                 }
                 metroBuf += data;
                 const lines = metroBuf.split(/\r?\n/);
@@ -179,15 +169,20 @@ function plugin(imports, register) {
         metro.on('close', (code) => {
             out(`Metro server exited with code ${code}`);
             if (close) close(code);
+            $metro.emit('close', code);
         });
 
         metro.start();
-        return metro;
+
+        return $metro;
     }
 
-    function buildAndInstall(ready, close, intalled, open, failed) {
+    function buildAndInstall(ready, close, _installed, open, failed) {
         const { out, err } = Log;
         const builder = process_manager('builder');
+        const $builder = new EventEmitter();
+        $builder.process = builder;
+
         builder.setup('npx', ['expo', 'run:android', '--no-bundler'], { cwd: workspace.path, stdio: 'pipe' });
         let installed = false;
         let opening = false;
@@ -209,15 +204,18 @@ function plugin(imports, register) {
                 const s = String(data);
                 if (s.includes('Installing')) {
                     installed = true;
-                    if (intalled) intalled();
+                    if (_installed) _installed();
+                    $builder.emit('installed');
                 }
                 if (s.includes('Opening')) {
                     opening = true;
                     if (open) open();
+                    $builder.emit('opening');
                 }
                 if (s.includes('BUILD FAILED')) {
                     err('Build failed');
                     if (failed) failed();
+                    $builder.emit('failed');
                 }
                 logger(data);
             } catch (_) { err(_); }
@@ -233,13 +231,16 @@ function plugin(imports, register) {
             out(`Builder exited with code ${code}`);
             if (close) close(code);
             if (ready) ready(installed && opening);
+            $builder.emit('close', code);
+            $builder.emit('ready', installed && opening);
         });
 
         builder.start();
-        return builder;
+        return $builder;
     }
 
     function adbLogCat(done, crashDetect) {
+        const $logCat = new EventEmitter();
         const { out, err } = Log;
         // New, simpler adb log collector per-device.
         const fs = require('fs');
@@ -337,6 +338,7 @@ function plugin(imports, register) {
                         if (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal')) {
                             //stop log cat, no longer needed
                             crashDetect && crashDetect(serial, line);
+                            $logCat.emit('crash', serial, line);
                         }
                     } catch (_) { }
                 }
@@ -347,7 +349,10 @@ function plugin(imports, register) {
             proc.on('close', (code) => {
                 out(`adb logcat(${serial}) exited with code ${code}`);
                 closed++;
-                if (closed === collectors.length && done) done(code);
+                if (closed === collectors.length) {
+                    if (done) done(code)
+                    $logCat.emit('done', code);
+                };
             });
 
             proc.start();
@@ -362,13 +367,12 @@ function plugin(imports, register) {
             collectors.push(c);
         }
 
-        return {
-            stop() {
-                for (const p of collectors) {
-                    try { p.stop(); } catch (_) { }
-                }
+        $logCat.stop = function () {
+            for (const p of collectors) {
+                try { p.stop(); } catch (_) { }
             }
-        };
+        }
+        return $logCat;
     }
 
     register(null, {

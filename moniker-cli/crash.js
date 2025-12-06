@@ -8,21 +8,21 @@ function plugin(imports, register) {
 
     const crash = {};
 
-    crash._enabled = false;
-    Object.defineProperty(crash, 'enabled', {
+    crash._enabled_capture = false;
+    Object.defineProperty(crash, 'capture_enabled', {
         get: function () {
-            return crash._enabled;
+            return crash._enabled_capture;
         },
         set: function (val) {
-            crash._enabled = !!val;
+            crash._enabled_capture = !!val;
         }
     });
+
     cli('--capture-bugreport-on-crash')
         .info('Automatically capture adb bugreport when a crash is detected')
         .flags({ pre: true })
         .do(() => {
-            crash.enabled = true;
-            Log.enabled = true;
+            crash.capture_enabled = true;
         });
 
 

@@ -1,5 +1,3 @@
-
-
 plugin.consumes = ['nodejs', 'workspace', 'cli', 'app'];
 plugin.provides = ['Log'];
 

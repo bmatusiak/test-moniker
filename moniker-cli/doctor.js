@@ -211,7 +211,9 @@ function plugin(imports, register) {
             } catch (_) { push('app_package', null); }
 
             if (outputObject) {
-                return results;
+                outputObject = {};
+                results.forEach(r => { outputObject[r.key] = r.value; });
+                return outputObject;
             }
 
             Log.enabled = true;

@@ -1,10 +1,10 @@
 
 
-plugin.consumes = ['nodejs'];
+plugin.consumes = ['nodejs', 'process_manager'];
 plugin.provides = ['device_manager'];
 
 function plugin(imports, register) {
-    const { nodejs } = imports;
+    const { nodejs, process_manager } = imports;
     const { spawnSync, spawn } = nodejs.child_process;
     const { fs, path } = nodejs;
 

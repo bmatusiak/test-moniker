@@ -4,14 +4,13 @@ plugin.consumes = ['Log', 'cli', 'nodejs'];
 plugin.provides = ['process_manager'];
 
 function plugin(imports, register) {
-    var { Log, cli, nodejs } = imports;
+    const { Log, cli, nodejs } = imports;
     const fs = nodejs.fs;
     const path = nodejs.path;
     const child_process = nodejs.child_process;
-
     const EventEmitter = nodejs.EventEmitter;
+    const { spawn, spawnSync } = child_process;
 
-    const { spawn } = child_process
     const loadedProcesses = {};
 
     function process_manager(processName) {
@@ -23,19 +22,19 @@ function plugin(imports, register) {
         var prog = process_manager('myProcess');//named process ( can be setup once and reused )
         prog.setup('node', ['myScript.js'], {cwd: '/path/to/dir'});//setup command, args and options ( required to once before start )
         prog.on('exit', (code, signal) => {
-            pmOut(`Process exited with code ${code} and signal ${signal}`);
+            Log.out(`Process exited with code ${code} and signal ${signal}`);
         });
         prog.on('error', (err) => {
-            pmErr('Process error:', err);
+            Log.err('Process error:', err);
         });
         prog.on('start', () => {
-            pmOut('Process started');
+            Log.out('Process started');
         });
         prog.on('stdout', (data) => {
-            pmOut('STDOUT:', data);
+            Log.out('STDOUT:', data);
         });
         prog.on('stderr', (data) => {
-            pmErr('STDERR:', data);
+            Log.err('STDERR:', data);
         });
         prog.start();
         setTimeout(() => {
@@ -47,7 +46,7 @@ function plugin(imports, register) {
         setTimeout(() => {
             process_manager.stop('myProcess');//stop by name
             prog.once('exit', () => {
-                pmOut('Process fully stopped');
+                Log.out('Process fully stopped');
                 prog.start();
             });
         }, 20000);
@@ -151,28 +150,6 @@ function plugin(imports, register) {
         return proc;
     };
 
-    // small logger helpers that prefer the global MonikerLog when available
-    function pmOut() {
-        const args = Array.prototype.slice.call(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
-        const msg = args.join(' ');
-        try {
-            if (global && global.MonikerLog && global.MonikerLog.echo) {
-                try { global.MonikerLog.echo(msg); return; } catch (_) { }
-            }
-        } catch (_) { }
-        console.log(msg);
-    }
-    function pmErr() {
-        const args = Array.prototype.slice.call(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
-        const msg = args.join(' ');
-        try {
-            if (global && global.MonikerLog && global.MonikerLog.echo) {
-                try { global.MonikerLog.echo('[ERROR] ' + msg); return; } catch (_) { }
-            }
-        } catch (_) { }
-        console.error(msg);
-    }
-
     function stopByName(name) {
         if (!name) {
             process_manager.stopAll();
@@ -203,7 +180,7 @@ function plugin(imports, register) {
 
             const CTRL_C = '\x03';
             if (child.stdin && !child.killed) {
-                if (verbose) pmOut('Sending Ctrl+C to child stdin...');
+                if (verbose) Log.out('Sending Ctrl+C to child stdin...');
                 try { child.stdin.write(CTRL_C); } catch (_) { }
             }
 
@@ -236,6 +213,31 @@ function plugin(imports, register) {
         };
         return child;
     }
+
+    function run(cmd, args = [], opts = {}) {
+        const input = opts.input || null;
+        const env = Object.assign({}, process.env, opts.env || {});
+        const cwd = opts.cwd || process.cwd();
+        const stdio = input ? ['pipe', 'inherit', 'inherit'] : 'inherit';
+        const res = spawnSync(cmd, args, { env, stdio, input, cwd });
+        if (res.error) throw res.error;
+        if (res.status !== 0) {
+            const err = new Error(`Command failed: ${cmd} ${args.join(' ')}`);
+            err.status = res.status;
+            throw err;
+        }
+    }
+    process_manager.run = run;
+
+    function tryRun(cmd, args = [], opts = {}) {
+        try {
+            run(cmd, args, opts);
+            return true;
+        } catch (_e) {
+            return false;
+        }
+    }
+    process_manager.tryRun = tryRun;
 
     register(null, { process_manager });
 }
