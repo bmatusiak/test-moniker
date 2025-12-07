@@ -43,10 +43,8 @@ function plugin(imports, register) {
             metro = startMeroServer();
 
             metro.on('ready', () => {
-                let detectedOpen = false;
                 _builder = buildAndInstall();
                 _builder.on('opening', (error) => {
-                    let detectedOpen = false;
                     logcat = adbLogCat();
                     logcat.on('crash', (serial, line) => {
                         if (crashDetected) return;
@@ -129,8 +127,8 @@ function plugin(imports, register) {
                     err('Build server error: (see logs for details)');
                     metro.process.stop();
                 });
-                _builder.on('done', (code) => {
-                    if (code == 1 && !detectedOpen) {
+                _builder.on('close', (code) => {
+                    if (code == 1) {
                         _PROCESS_EXIT_CODE = 1;
                         err('Build server error: (see logs for details)');
                         metro.process.stop();
