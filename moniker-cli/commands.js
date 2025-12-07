@@ -23,7 +23,7 @@ function plugin(imports, register) {
 
     const exitProcess = (code) => {
         Log.out('Logs saved to ' + Log.path);
-        Log.out('Process ran for ' + ((Date.now() - processStartTime) / 1000) + ' seconds.');
+        Log.out('Process ran for ' + ((Date.now() - processStartTime) / 1000) + ' seconds. exit code: ' + code);
         //save Log.path to logs/latest-log.txt
         try {
             const latestLogPath = path.join(globals.workspace, 'logs', 'latest-log.txt');
@@ -141,7 +141,18 @@ function plugin(imports, register) {
                     exitProcess(_PROCESS_EXIT_CODE);//exit when metro stops
             });
 
-            metro.on('done', () => {
+            metro.on('done', (lineData) => {
+                // line data ` LOG  [Moniker] TEST COMPLETE | Passed: 2 Failed: 1 (3.05s)`
+                try {
+                    const passedMatch = lineData.match(/Passed:\s*(\d+)/);
+                    const failedMatch = lineData.match(/Failed:\s*(\d+)/);
+                    let passed = 0, failed = 0;
+                    if (passedMatch) passed = parseInt(passedMatch[1] || '0');
+                    if (failedMatch) failed = parseInt(failedMatch[1] || '0');
+                    if (failed > 0) _PROCESS_EXIT_CODE = 1;
+                    else _PROCESS_EXIT_CODE = 0;
+                } catch (_) { }
+
                 logcat.stop();
             });
 
@@ -171,8 +182,8 @@ function plugin(imports, register) {
                     $metro.emit('ready');
                 }
                 if (data.includes('TEST COMPLETE')) {
-                    if (done) done();
-                    $metro.emit('done');
+                    if (done) done(data);
+                    $metro.emit('done', data);
                 }
                 if (data.includes('ERROR  SyntaxError')) {
                     if (error) error(data);
@@ -191,7 +202,8 @@ function plugin(imports, register) {
         metro.on('stdout', (chunk) => logger(chunk));
 
         metro.on('close', (code) => {
-            out(`Metro server exited with code ${code}`);
+            if (code)
+                out(`Metro server exited with code ${code}`);
             if (close) close(code);
             $metro.emit('close', code);
         });
@@ -252,7 +264,8 @@ function plugin(imports, register) {
 
 
         builder.on('close', (code) => {
-            out(`Builder exited with code ${code}`);
+            if (code)
+                out(`Builder exited with code ${code}`);
             if (close) close(code);
             if (ready) ready(installed && opening);
             $builder.emit('close', code);
@@ -350,7 +363,8 @@ function plugin(imports, register) {
             proc.on('stdout', onData);
             proc.on('stderr', onData);
             proc.on('close', (code) => {
-                out(`adb logcat(${serial}) exited with code ${code}`);
+                if (code)
+                    out(`adb logcat(${serial}) exited with code ${code}`);
                 closed++;
                 if (closed === collectors.length) {
                     if (done) done(code)
