@@ -180,11 +180,11 @@ function plugin(imports, register) {
             const { forceAfterMs = 3000, verbose = false } = opts;
             if (!child || !child.pid) return;
 
-            const CTRL_C = '\x03';
-            if (child.stdin && !child.killed) {
-                if (verbose) Log.out('Sending Ctrl+C to child stdin...');
-                try { child.stdin.write(CTRL_C); } catch (_) { }
-            }
+            // const CTRL_C = '\x03';
+            // if (child.stdin && !child.killed) {
+            //     // if (verbose) Log.out('Sending Ctrl+C to child stdin...');
+            //     try { child.stdin.write(CTRL_C); } catch (_) { }
+            // }
 
             try { child.kill('SIGINT'); } catch (_) { }
 

@@ -22,8 +22,9 @@ function plugin(imports, register) {
     }
 
     const exitProcess = (code) => {
-        Log.out('Logs saved to ' + Log.path);
         Log.out('Process ran for ' + ((Date.now() - processStartTime) / 1000) + ' seconds. exit code: ' + code);
+        Log.out('Initial command: `npx test-moniker ' + process.argv.slice(2).join(' ') + '`');
+        Log.out('Logs saved to ' + Log.path);
         //save Log.path to logs/latest-log.txt
         try {
             const latestLogPath = path.join(globals.workspace, 'logs', 'latest-log.txt');
@@ -38,6 +39,9 @@ function plugin(imports, register) {
         .info('Start the metro development server')
         .do(() => {
             const { out, err } = Log;
+            // show this process command line arguments that was used to start CLI using process.argv ( but not the first two args)
+
+
             let metro, _builder, logcat, crashDetected = false;
             tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
             metro = startMeroServer();
