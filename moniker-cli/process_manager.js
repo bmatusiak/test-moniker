@@ -1,10 +1,10 @@
 
 
-plugin.consumes = ['Log', 'cli', 'nodejs'];
+plugin.consumes = ['Log', 'cli', 'nodejs', 'platform'];
 plugin.provides = ['process_manager'];
 
 function plugin(imports, register) {
-    const { Log, cli, nodejs } = imports;
+    const { Log, cli, nodejs, platform } = imports;
     const fs = nodejs.fs;
     const path = nodejs.path;
     const child_process = nodejs.child_process;
@@ -165,7 +165,7 @@ function plugin(imports, register) {
         const env = Object.assign({}, process.env, opts.env || {});
         const cwd = opts.cwd || process.cwd();
         // console.log(`\n$ ${[cmd, ...args].join(" ")}`);
-        const child = spawn(cmd, args, { env, cwd, stdio: opts.stdio || 'inherit', detached: true, shell: 'bash' });
+        const child = spawn(cmd, args, { env, cwd, stdio: opts.stdio || 'inherit', detached: true, ...(platform.isWindows ? { shell: 'bash' } : {}) });
         if (child.error) throw child.error;
         child.isRunning = (pid) => {
             try {
