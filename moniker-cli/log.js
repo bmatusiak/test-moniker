@@ -12,6 +12,7 @@ function plugin(imports, register) {
     Log._out_enabled = true;
     Log._err_enabled = true;
     Log._verbose = false;
+    Log._log_level = 1;// 1=info 2=verbose 3=debug
     Log.path = 'logs/' + Log._logTag + '-' + Date.now() + '.txt';
     Log._echo = function (line, error = false, append = false) {
         if (append) Log._append(line);
@@ -57,7 +58,6 @@ function plugin(imports, register) {
         }
     };
 
-    // output helpers use Log.echo when available (JSON mode), otherwise fallback
     Log.out = function out() {
         if (!Log._out_enabled) return;
         const args = Array.prototype.slice.call(arguments).map(a => (typeof a === 'string' ? a : JSON.stringify(a)));
@@ -78,6 +78,16 @@ function plugin(imports, register) {
         } catch (_) { }
         console.error(msg);
     };
+    Log.info = function (tag, msg) {
+        if (!Log._write_enabled) return;
+        const line = `[${tag}] ${msg}`;
+        try {
+            Log.out(line);
+            return;
+        } catch (_) { }
+        console.log(line);
+    };
+
     Object.defineProperty(Log, 'enabled', {
         get: function () {
             return Log._write_enabled;

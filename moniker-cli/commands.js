@@ -12,6 +12,7 @@ function plugin(imports, register) {
     const { run, tryRun } = process_manager
 
     let _PROCESS_EXIT_CODE = 0;
+    let _BUILD_ONLY = false;
 
     const processStartTime = Date.now();
     const _doctor = doctor.get();
@@ -35,6 +36,14 @@ function plugin(imports, register) {
 
     var processes = {};
 
+
+    cli('--build-only', '-b')
+        .flags({ pre: true })
+        .info('Start the metro development server')
+        .do(() => {
+            _BUILD_ONLY = true;
+        });
+
     cli('--start-dev-server', '-s')
         .info('Start the metro development server')
         .do(() => {
@@ -49,6 +58,11 @@ function plugin(imports, register) {
             metro.on('ready', () => {
                 _builder = buildAndInstall();
                 _builder.on('opening', (error) => {
+                    if (_BUILD_ONLY) {
+                        _PROCESS_EXIT_CODE = 0;
+                        metro.process.stop();
+                        return;
+                    }
                     logcat = adbLogCat();
                     logcat.on('crash', (serial, line) => {
                         if (crashDetected) return;
