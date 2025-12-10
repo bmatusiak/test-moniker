@@ -185,7 +185,7 @@ function MonikerView(props = { tests: [] }) {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Test Runner</Text>
+            <Text style={styles.title}>Test Moniker</Text>
             <Button title={running ? 'Running…' : 'Run Tests'} onPress={() => {
                 if (__DEV__) {
                     DevSettings.reload();
