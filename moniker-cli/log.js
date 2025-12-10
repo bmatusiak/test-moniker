@@ -144,6 +144,23 @@ function plugin(imports, register) {
             Log.path = 'logs/' + (typeof values.log === 'string' ? values.log : Log.path);
         });
 
+    cli('--flush-logs')
+        .info('Flush existing files in the logs directory')
+        .flags({ pre: true })
+        .do(() => {
+            try {
+                const logDir = path.join(workspace.path, 'logs');
+                if (fs.existsSync(logDir)) {
+                    const files = fs.readdirSync(logDir);
+                    for (const file of files) {
+                        try {
+                            fs.unlinkSync(path.join(logDir, file));
+                        } catch (_) { }
+                    }
+                }
+            } catch (_) { }
+        });
+
     cli('--silent')
         .info('Log Output to moniker-logs.txt')
         .flags({ pre: true })
