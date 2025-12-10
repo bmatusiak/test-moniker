@@ -19,7 +19,7 @@ function plugin(imports, register) {
     function onCrashDetected() {
 
     }
-    
+
     let testTarget = null;
     cli('--test-target')
         .flags({ pre: true })
@@ -30,7 +30,14 @@ function plugin(imports, register) {
                 if (v) testTarget = String(v);
             } catch (_) { }
         });
-
+    
+    let crashCheck = true;
+    cli('--disable-crash-check')
+        .flags({ pre: true })
+        .info('Disable crash detection check')
+        .do(() => {
+            crashCheck = false;
+        });
     function generateTestList() {
         try {
             const testsDir = path.join(workspace.path, '__e2e_tests__');
@@ -430,7 +437,7 @@ function plugin(imports, register) {
                     out('[ADB-' + serial + '] ' + line);
                     // capture bugreport on crash keywords
                     try {
-                        if (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal')) {
+                        if (crashCheck && (line.includes('FATAL EXCEPTION') || line.includes('SIGSEGV') || line.includes('ANR') || line.includes('Fatal signal'))) {
                             //stop log cat, no longer needed
                             crashDetect && crashDetect(serial, line);
                             $logCat.emit('crash', serial, line);
