@@ -19,6 +19,17 @@ function plugin(imports, register) {
     function onCrashDetected() {
 
     }
+    
+    let testTarget = null;
+    cli('--test-target')
+        .flags({ pre: true })
+        .info('Start the metro development server')
+        .do((values) => {
+            try {
+                const v = values && values['--test-target'];
+                if (v) testTarget = String(v);
+            } catch (_) { }
+        });
 
     function generateTestList() {
         try {
@@ -29,6 +40,7 @@ function plugin(imports, register) {
             }
 
             const files = fs.readdirSync(testsDir).filter(f => {
+                if(testTarget && !f.includes(testTarget)) return false;
                 if (!f || !f.endsWith('.js')) return false;
                 if (f === 'index.js') return false;
                 return true;
