@@ -41,6 +41,9 @@ function plugin(imports, register) {
             if (_CONFIG) break;
         } catch (_) { }
     }
+    if(!_CONFIG) {
+        _CONFIG = {};
+    }
 
 
     cli('--config')

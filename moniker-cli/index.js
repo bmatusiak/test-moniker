@@ -29,6 +29,21 @@ const workspacePlugin = require('./workspace.js');
         workspacePlugin
     ];
 
+    config.push((() => {
+        plugin.consumes = [];
+        plugin.provides = ['platform'];
+        function plugin(imports, register) {
+            const platform = {};
+            if (process.platform === 'win32') {
+                platform.isWindows = true;
+            } else if (process.platform === 'linux') {
+                platform.isLinux = true;
+            }
+            register(null, { platform });
+        }
+        return plugin
+    })());
+
     var build = rectify.build(config);
 
     var app = await build.start();

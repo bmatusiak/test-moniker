@@ -165,7 +165,7 @@ function plugin(imports, register) {
         const env = Object.assign({}, process.env, opts.env || {});
         const cwd = opts.cwd || process.cwd();
         // console.log(`\n$ ${[cmd, ...args].join(" ")}`);
-        const child = spawn(cmd, args, { env, cwd, stdio: opts.stdio || 'inherit', detached: true });
+        const child = spawn(cmd, args, { env, cwd, stdio: opts.stdio || 'inherit', detached: true, shell: 'bash' });
         if (child.error) throw child.error;
         child.isRunning = (pid) => {
             try {

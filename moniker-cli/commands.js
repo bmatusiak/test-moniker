@@ -1,11 +1,11 @@
 const { log } = require('console');
 
 
-plugin.consumes = ['cli', 'workspace', 'Log', 'device_manager', 'process_manager', 'crash', 'nodejs', 'doctor', 'config', 'globals'];
+plugin.consumes = ['cli', 'workspace', 'Log', 'device_manager', 'process_manager', 'crash', 'nodejs', 'doctor', 'config', 'globals', 'platform'];
 plugin.provides = ['commands'];
 
 function plugin(imports, register) {
-    var { cli, workspace, Log, device_manager, process_manager, crash, nodejs, doctor, config, globals } = imports;
+    var { cli, workspace, Log, device_manager, process_manager, crash, nodejs, doctor, config, globals, platform } = imports;
     const EventEmitter = nodejs.events.EventEmitter;
     const fs = nodejs.fs;
     const path = nodejs.path;
@@ -15,8 +15,6 @@ function plugin(imports, register) {
     let _BUILD_ONLY = false;
 
     const processStartTime = Date.now();
-    const _doctor = doctor.get();
-    const _config = config.get();
 
     function onCrashDetected() {
 
@@ -47,12 +45,21 @@ function plugin(imports, register) {
     cli('--start-dev-server', '-s')
         .info('Start the metro development server')
         .do(() => {
+            const _doctor = doctor.get();
+            // console.log(_doctor)
+            // process.exit(0);
             const { out, err } = Log;
             // show this process command line arguments that was used to start CLI using process.argv ( but not the first two args)
 
 
             let metro, _builder, logcat, crashDetected = false;
-            tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
+            if(_doctor.metro_port_8081 == 'in-use') {
+                if(platform && platform.isLinux)
+                    tryRun('fuser', ['-k', '8081/tcp']);//kill any process using metro port
+                if(platform && platform.isWindows)
+                    tryRun('powershell', ['-Command', 'Stop-Process -Id (Get-NetTCPConnection -LocalPort 8081).OwningProcess -Force']);
+            }
+
             metro = startMeroServer();
 
             metro.on('ready', () => {
@@ -295,6 +302,9 @@ function plugin(imports, register) {
     }
 
     function adbLogCat(done, crashDetect) {
+
+        const _config = config.get();
+
         const $logCat = new EventEmitter();
         const { out, err } = Log;
         // New, simpler adb log collector per-device.
