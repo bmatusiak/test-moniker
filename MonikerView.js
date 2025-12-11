@@ -3,6 +3,20 @@ import { View, Text, Button, ScrollView, StyleSheet, ActivityIndicator, Pressabl
 
 const harness = require('./harness');
 
+let configLoaded = true;
+const monikerConfig = (() => {
+    try {
+        return require('../moniker.config');// if we are in ./test-moniker in root project
+    } catch (e) {
+        try {
+            return require('../../moniker.config');//if we are in node_modules/test-moniker
+        } catch (e) {
+            configLoaded = false;
+            return {};
+        }
+    }
+})();
+
 function MonikerView(props = { tests: [] }) {
     const [running, setRunning] = useState(false);
     const [results, setResults] = useState(null);
@@ -80,7 +94,7 @@ function MonikerView(props = { tests: [] }) {
         };
 
         try {
-            const res = await harness.run({ log, onTestUpdate, onTestStart: onTestStartTiming, onTestEnd: onTestEndTiming });
+            const res = await harness.run({ log, onTestUpdate, onTestStart: onTestStartTiming, onTestEnd: onTestEndTiming, config: monikerConfig });
             setResults(res);
             const stopTime = Date.now();
             const totalDurationMs = stopTime - allStart;
@@ -185,7 +199,8 @@ function MonikerView(props = { tests: [] }) {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Test Moniker</Text>
+            <Text style={styles.title}>{monikerConfig.title || 'Test Moniker'}</Text>
+            <Text style={styles.title}>Config Loaded: {configLoaded ? 'Yes' : 'No'}</Text>
             <Button title={running ? 'Running…' : 'Run Tests'} onPress={() => {
                 if (__DEV__) {
                     DevSettings.reload();
@@ -241,7 +256,7 @@ function MonikerView(props = { tests: [] }) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 12, backgroundColor: '#fff', width: '100%' },
+    container: { flex: 1, padding: 12,paddingTop: 25, backgroundColor: '#fff', width: '100%' },
     title: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
     summary: { marginVertical: 8 },
     summaryText: { fontSize: 14 },
