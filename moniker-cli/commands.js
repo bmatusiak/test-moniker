@@ -80,11 +80,21 @@ function plugin(imports, register) {
         Log.out('Process ran for ' + ((Date.now() - processStartTime) / 1000) + ' seconds. exit code: ' + code);
         Log.out('Initial command: `npx test-moniker ' + process.argv.slice(2).join(' ') + '`');
         Log.out('Logs saved to ' + Log.path);
-        //save Log.path to logs/latest-log.txt
+
+        //copy file Log.path to logs/latest-log.txt
         try {
-            const latestLogPath = path.join(globals.workspace, 'logs', 'latest-log.txt');
-            fs.writeFileSync(latestLogPath, Log.path, 'utf8');
+            const latestLogDir = path.join(globals.workspace, 'logs');
+            if (!fs.existsSync(latestLogDir)) fs.mkdirSync(latestLogDir, { recursive: true });
+            const latestLogPath = path.join(latestLogDir, 'latest-log.txt');
+            fs.copyFileSync(Log.path, latestLogPath);
+            Log.out('Copied log to ' + latestLogPath);
         } catch (_) { }
+
+        //save Log.path to logs/latest-log.txt
+        // try {
+        //     const latestLogPath = path.join(globals.workspace, 'logs', 'latest-log.txt');
+        //     fs.writeFileSync(latestLogPath, Log.path, 'utf8');
+        // } catch (_) { }
         process.exit(code);
     }
 
