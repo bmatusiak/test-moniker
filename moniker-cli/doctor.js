@@ -12,6 +12,7 @@ function plugin(imports, register) {
     // doctor: environment and health checks
     function runDoctor(outputObject = false) {
         const out = Log.out || console.log;
+        const debug = runDoctor.debug ? out : () => { };
         const err = Log.err || console.error;
         try {
             const results = [];
@@ -21,28 +22,40 @@ function plugin(imports, register) {
             push('globals', globals);
             push('workspace', globals.workspace);
 
+            debug('Starting Moniker Doctor checks...');
+
+            debug('Checking Android development environment...');
             const adb = se('adb', ['version']);
             push('adb', adb.ok ? 'ok' : ('missing: ' + (adb.stderr || adb.stdout)));
 
+
+            debug('Checking Java installation...');
             const java = se('java', ['-version']);
             push('java', java.ok ? 'ok' : ('missing: ' + (java.stderr || java.stdout)));
 
+
+            debug('Checking Android SDK configuration...');
             const sdk = process.env.ANDROID_SDK_ROOT || process.env.ANDROID_HOME || null;
             push('android_sdk', sdk ? sdk : 'NOT SET');
 
+            debug('Running Android environment checks...');
             const avds = se('emulator', ['-list-avds']);
             push('avds', avds.ok ? (avds.stdout || '').trim().split(/\r?\n/).filter(Boolean) : []);
 
+            debug('Checking network ports...');
             const portCheck = se('node', ['-e', 'const net=require(\'net\'); const s=net.createConnection(8081,\'127.0.0.1\'); s.on(\'connect\',()=>{console.log(\'open\'); s.destroy(); process.exit(0)}); s.on(\'error\',()=>{console.log(\'closed\'); process.exit(1)}); setTimeout(()=>{console.log(\'closed\'); process.exit(1)},1500);']);
             push('metro_port_8081', portCheck.status === 0 ? 'in-use' : 'free');
 
+            debug('Checking Expo development environment...');
             const portCheck19000 = se('node', ['-e', 'const net=require(\'net\'); const s=net.createConnection(19000,\'127.0.0.1\'); s.on(\'connect\',()=>{console.log(\'open\'); s.destroy(); process.exit(0)}); s.on(\'error\',()=>{console.log(\'closed\'); process.exit(1)}); setTimeout(()=>{console.log(\'closed\'); process.exit(1)},1500);']);
             push('expo_port_19000', portCheck19000.status === 0 ? 'in-use' : 'free');
 
+            debug('Gathering connected device information...');
             const devices = device_manager.listDevices();
             push('adb_devices', devices);
 
             // per-device properties
+            debug('Gathering per-device properties...');
             try {
                 const perDev = [];
                 for (const d of devices) {
@@ -108,6 +121,7 @@ function plugin(imports, register) {
             } catch (_) { }
 
             // emulator process check (pgrep may not exist, tolerate failures)
+            debug('Checking for running emulators...');
             try {
                 const pgrep = se('pgrep', ['-f', 'emulator']);
                 const pids = pgrep.ok ? (pgrep.stdout || '').trim().split(/\r?\n/).filter(Boolean) : [];
@@ -115,12 +129,14 @@ function plugin(imports, register) {
             } catch (_) { }
 
             // expo + gradle + workspace checks
+            debug('Checking Expo CLI installation...');
             try {
                 const expo = se('npx', ['expo', '--version']);
                 push('expo_cli', expo.ok ? (expo.stdout || expo.stderr || '').trim() : null);
             } catch (_) { push('expo_cli', null); }
 
             // installed package versions (expo, react-native, react) if available
+            debug('Checking installed package versions...');
             try {
                 let v = null;
                 try { v = require('expo/package.json').version; } catch (_) { v = null; }
@@ -133,6 +149,7 @@ function plugin(imports, register) {
                 push('installed_expo_version', v || null);
             } catch (_) { push('installed_expo_version', null); }
 
+            debug('Checking installed React Native version...');
             try {
                 let v = null;
                 try { v = require('react-native/package.json').version; } catch (_) { v = null; }
@@ -145,6 +162,7 @@ function plugin(imports, register) {
                 push('installed_react_native_version', v || null);
             } catch (_) { push('installed_react_native_version', null); }
 
+            debug('Checking installed React version...');
             try {
                 let v = null;
                 try { v = require('react/package.json').version; } catch (_) { v = null; }
@@ -157,12 +175,14 @@ function plugin(imports, register) {
                 push('installed_react_version', v || null);
             } catch (_) { push('installed_react_version', null); }
 
+            debug('Checking for Gradle wrapper in workspace...');
             try {
                 const gradlew = fs.existsSync(path.join(workspace.path, 'android', 'gradlew'));
                 push('workspace_gradlew', !!gradlew);
             } catch (_) { push('workspace_gradlew', false); }
 
             // extra machine-readable checks
+            debug('Gathering system information...');
             try {
                 push('node_version', process.version);
                 push('platform', os.platform());
@@ -172,6 +192,7 @@ function plugin(imports, register) {
                 push('free_mem', os.freemem());
             } catch (_) { }
 
+            debug('Checking workspace files...');
             try {
                 const pkgExists = fs.existsSync(path.join(workspace.path, 'package.json'));
                 const appJsonExists = fs.existsSync(path.join(workspace.path, 'app.json'));
@@ -180,6 +201,7 @@ function plugin(imports, register) {
             } catch (_) { }
 
             // app package id (try app.json then AndroidManifest)
+            debug('Determining app package id...');
             try {
                 let appPkg = null;
                 try {
@@ -271,7 +293,7 @@ function plugin(imports, register) {
         });
 
 
-    register(null, { doctor: { run: runDoctor, get: () => runDoctor(true) } });
+    register(null, { doctor: { run: runDoctor, get: (d) => { runDoctor.debug = d; return runDoctor(true); } } });
 }
 
 

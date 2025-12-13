@@ -10,7 +10,7 @@ function plugin(imports, register) {
 
     function safeExec(cmd, args, opts) {
         try {
-            const r = spawnSync(cmd, args || [], Object.assign({ encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }, opts || {}));
+            const r = spawnSync(cmd, args || [], Object.assign({ encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }, { ...(opts || { shell: 'bash' }) }));
             return { ok: r.status === 0, stdout: String(r.stdout || ''), stderr: String(r.stderr || ''), status: r.status };
         } catch (e) {
             return { ok: false, stdout: '', stderr: String(e), status: 1 };
