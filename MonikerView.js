@@ -147,7 +147,7 @@ function MonikerView(props = { tests: [] }) {
 
         const suiteStart = Date.now();
         try {
-            const res = await harness.run({ render: renderComponent, log, onTestUpdate, testFilter: (testName, suiteName) => suiteName === targetSuite });
+            const res = await harness.run({ render: renderComponent, log, onTestUpdate, testFilter: (testName, suiteName) => suiteName === targetSuite, config: monikerConfig });
             setResults(res);
             const dur = Date.now() - suiteStart;
             setSuiteDurations(prev => ({ ...prev, [targetSuite]: dur }));
