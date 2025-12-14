@@ -37,6 +37,11 @@ function MonikerView(props = { tests: [] }) {
     const [suiteDurations, setSuiteDurations] = useState({});
     const [totalDurationMs, setTotalDurationMs] = useState(null);
 
+    const [renderComponentView, setRenderComponent] = useState(null);
+    const renderComponent = (component) => {
+        setRenderComponent(component);
+    };
+
     const formatDuration = (ms) => {
         if (ms == null) return '';
         if (ms < 1000) return `${ms}ms`;
@@ -94,7 +99,7 @@ function MonikerView(props = { tests: [] }) {
         };
 
         try {
-            const res = await harness.run({ log, onTestUpdate, onTestStart: onTestStartTiming, onTestEnd: onTestEndTiming, config: monikerConfig });
+            const res = await harness.run({ render: renderComponent, log, onTestUpdate, onTestStart: onTestStartTiming, onTestEnd: onTestEndTiming, config: monikerConfig });
             setResults(res);
             const stopTime = Date.now();
             const totalDurationMs = stopTime - allStart;
@@ -142,7 +147,7 @@ function MonikerView(props = { tests: [] }) {
 
         const suiteStart = Date.now();
         try {
-            const res = await harness.run({ log, onTestUpdate, testFilter: (testName, suiteName) => suiteName === targetSuite });
+            const res = await harness.run({ render: renderComponent, log, onTestUpdate, testFilter: (testName, suiteName) => suiteName === targetSuite });
             setResults(res);
             const dur = Date.now() - suiteStart;
             setSuiteDurations(prev => ({ ...prev, [targetSuite]: dur }));
@@ -198,65 +203,73 @@ function MonikerView(props = { tests: [] }) {
     }, [testList.length]);
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>{monikerConfig.title || 'Test Moniker'}</Text>
-            <Text style={styles.title}>Config Loaded: {configLoaded ? 'Yes' : 'No'}</Text>
-            <Button title={running ? 'Running…' : 'Run Tests'} onPress={() => {
-                if (__DEV__) {
-                    DevSettings.reload();
-                } else {
-                    globalThis._testRan = false;
-                    runAll();
-                }
-            }} disabled={running} />
+        <>
 
-            {running ? (
-                <View style={styles.runningRow}>
-                    <ActivityIndicator style={styles.runningSpinner} size="small" />
-                    <Text style={styles.runningText}>Running tests…</Text>
+            <View style={styles.container}>
+                <View
+                // style={styles.hide}
+                >
+                    {renderComponentView}
                 </View>
-            ) : null}
+                <Text style={styles.title}>{monikerConfig.title || 'Test Moniker'}</Text>
+                <Text style={styles.title}>Config Loaded: {configLoaded ? 'Yes' : 'No'}</Text>
+                <Button title={running ? 'Running…' : 'Run Tests'} onPress={() => {
+                    if (__DEV__) {
+                        DevSettings.reload();
+                    } else {
+                        globalThis._testRan = false;
+                        runAll();
+                    }
+                }} disabled={running} />
 
-            <View style={styles.summary}>
-                <Text style={styles.summaryText}>
-                    {results ? `Passed: ${results.passed}  Failed: ${results.failed} ${totalDurationMs ? `(${formatDuration(totalDurationMs)})` : ''}` : 'No results yet'}
-                </Text>
-            </View>
+                {running ? (
+                    <View style={styles.runningRow}>
+                        <ActivityIndicator style={styles.runningSpinner} size="small" />
+                        <Text style={styles.runningText}>Running tests…</Text>
+                    </View>
+                ) : null}
 
-            <ScrollView style={styles.scroll} contentContainerStyle={{ flexGrow: 1 }}>
-                {testList.map((suite, si) => (
-                    <Pressable key={si} onPress={() => runSuite(suite.name)} style={({ pressed }) => [styles.suite, pressed && styles.suitePressed]}>
-                        <Text style={styles.suiteTitle}>{suite.name}{suiteDurations[suite.name] ? ` — ${formatDuration(suiteDurations[suite.name])}` : ''}</Text>
-                        {suite.tests.map((t, ti) => (
-                            <View key={ti} style={styles.testRow}>
-                                <View style={styles.testRowInner}>
-                                    {t.status === 'running' ? (
-                                        <ActivityIndicator size="small" style={styles.testSpinner} />
-                                    ) : t.status === 'pending' ? (
-                                        <Text style={[styles.testName, styles.pending]}>○</Text>
-                                    ) : t.status === 'passed' ? (
-                                        <Text style={[styles.testName, styles.pass]}>✓</Text>
-                                    ) : (
-                                        <Text style={[styles.testName, styles.fail]}>✗</Text>
-                                    )}
-                                    <Text style={[styles.testName, t.ok ? styles.pass : (t.status === 'pending' ? styles.pending : styles.fail)]}>
-                                        {` ${t.name}`}
-                                    </Text>
+                <View style={styles.summary}>
+                    <Text style={styles.summaryText}>
+                        {results ? `Passed: ${results.passed}  Failed: ${results.failed} ${totalDurationMs ? `(${formatDuration(totalDurationMs)})` : ''}` : 'No results yet'}
+                    </Text>
+                </View>
+
+                <ScrollView style={styles.scroll} contentContainerStyle={{ flexGrow: 1 }}>
+                    {testList.map((suite, si) => (
+                        <Pressable key={si} onPress={() => runSuite(suite.name)} style={({ pressed }) => [styles.suite, pressed && styles.suitePressed]}>
+                            <Text style={styles.suiteTitle}>{suite.name}{suiteDurations[suite.name] ? ` — ${formatDuration(suiteDurations[suite.name])}` : ''}</Text>
+                            {suite.tests.map((t, ti) => (
+                                <View key={ti} style={styles.testRow}>
+                                    <View style={styles.testRowInner}>
+                                        {t.status === 'running' ? (
+                                            <ActivityIndicator size="small" style={styles.testSpinner} />
+                                        ) : t.status === 'pending' ? (
+                                            <Text style={[styles.testName, styles.pending]}>○</Text>
+                                        ) : t.status === 'passed' ? (
+                                            <Text style={[styles.testName, styles.pass]}>✓</Text>
+                                        ) : (
+                                            <Text style={[styles.testName, styles.fail]}>✗</Text>
+                                        )}
+                                        <Text style={[styles.testName, t.ok ? styles.pass : (t.status === 'pending' ? styles.pending : styles.fail)]}>
+                                            {` ${t.name}`}
+                                        </Text>
+                                    </View>
+                                    {t.error ? (
+                                        <Text style={styles.error}>{t.error}</Text>
+                                    ) : null}
                                 </View>
-                                {t.error ? (
-                                    <Text style={styles.error}>{t.error}</Text>
-                                ) : null}
-                            </View>
-                        ))}
-                    </Pressable>
-                ))}
-            </ScrollView>
-        </View>
+                            ))}
+                        </Pressable>
+                    ))}
+                </ScrollView>
+            </View>
+        </>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 12,paddingTop: 25, backgroundColor: '#fff', width: '100%' },
+    container: { flex: 1, padding: 12, paddingTop: 25, backgroundColor: '#fff', width: '100%' },
     title: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
     summary: { marginVertical: 8 },
     summaryText: { fontSize: 14 },
@@ -275,6 +288,13 @@ const styles = StyleSheet.create({
     runningSpinner: { marginRight: 6 },
     runningRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
     runningText: { fontSize: 14 },
+    hide: {
+        position: 'absolute',
+        width: 0,
+        height: 0,
+        flexGrow: 0,
+        flexShrink: 1
+    },
 });
 
 export default MonikerView;
