@@ -429,6 +429,16 @@ function plugin(imports, register) {
                 args.push('--pid', pid);
             }
 
+            const VERBOSE_TAGS = _config.verboseTags || [];
+            for (const t of VERBOSE_TAGS) {
+                try { args.push(t + ':V'); } catch (_) { }
+            }
+
+            const DEBUG_TAGS = _config.debugTags || [];
+            for (const t of DEBUG_TAGS) {
+                try { args.push(t + ':D'); } catch (_) { }
+            }
+
             // Silence very noisy system tags observed during short captures.
             // These were determined by sampling raw `adb logcat -v time` and
             // represent frequent system noise we generally don't need in device logs.
@@ -459,7 +469,9 @@ function plugin(imports, register) {
                             logged = true;
                         }
                         //contains app process id   (PID)
-                        if (!logged && pid && line.includes('(' + pid + ')')) {
+                        //remove all spaces in line
+                        const line2 = line.replace(/\s+/g, ' ');
+                        if (!logged && pid && line2.includes('(' + pid + ')')) {
                             out('[ADB-' + serial + '] ' + line);
                             logged = true;
                         }
